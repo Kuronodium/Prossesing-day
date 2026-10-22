@@ -542,9 +542,22 @@ function drawKeys() {
   }
 }
 
+// 画面の大きさが変わっても(アプリの切り替えやアドレスバーの出入りなど)、やり直さずに続ける
+// 振り子や軌跡の位置は腕の長さ L に比例しているので、新しい L に合わせて伸び縮みさせる
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
-  restart();
+  const k = (min(width, height) * 0.1) / L;
+  L *= k;
+  zStep = (L * DEPTH) / HISTORY;
+  for (const pts of pend.trail) {
+    for (const pt of pts) {
+      pt.x *= k;
+      pt.y *= k;
+    }
+  }
+  const glow = keys.map((key) => [key.glow, key.last]);
+  makeKeys();
+  keys.forEach((key, i) => ([key.glow, key.last] = glow[i]));
 }
 
 function keyPressed() {
