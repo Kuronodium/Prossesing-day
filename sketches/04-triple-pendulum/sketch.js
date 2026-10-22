@@ -531,7 +531,7 @@ function drawPendulum() {
   }
   // 点:中心 → 1つ目の関節 → 2つ目の関節 → 先端 の順に、大きく明るくなる
   // 光は、中心からなめらかに減っていくグラデーションの画像を、いつもカメラの方を向く板に貼って描く
-  const size = [0.65, 0.7, 0.75, 1];
+  const size = [0.82, 0.85, 0.88, 1];
   const gl = drawingContext;
   gl.disable(gl.DEPTH_TEST); // 光どうしが、互いに隠し合わないように
   noStroke();
