@@ -448,43 +448,61 @@ function spread(age) {
 }
 
 // i 番目の点(0 = 中心、N = 先端)の光の軌跡。新しいほど手前で明るく、古いほど奥で広がって薄く消えていく
+// ボケ:古い(奥の)軌跡ほど、線を太く薄くして、ピントが外れたように見せる
+// ぼけた線は「太くて薄い線」とほぼ同じに見えるので、画面全体をぼかすより、ずっと軽い
+const BOKEH = 3;         // いちばん古い線が、新しい線の何倍の太さになるか(1 = ボケなし)
+const BOKEH_BANDS = 10;  // 太さを変える段階の数(多いほど、太さの変わり目が目立たない)
+const BOKEH_DIM = 0.6;   // 太くしたぶん暗くする強さ(1 = 太さに反比例して、光の総量をそのままにする)
+
 function drawTrail(i) {
   noFill();
+  const n = pend.trail.length;
+  // ここより古い部分には、にじみを付けない(軽くするため)
+  const recent = max(0, n - 1 - floor(HISTORY * RECENT));
+  // 太く薄い線(にじみ)と、細く明るい線(芯)を重ねて、光っているように見せる
+  drawRun(i, recent, n, 5, 0.18);
+  // 芯の線は、古さで区切って、古いほど太く薄く描く
+  for (let b = 0; b < BOKEH_BANDS; b++) {
+    const to = n - floor((HISTORY * b) / BOKEH_BANDS);
+    const from = max(0, n - 1 - floor((HISTORY * (b + 1)) / BOKEH_BANDS));
+    if (to - from < 2) break;
+    const blur = 1 + (BOKEH - 1) * ((b + 0.5) / BOKEH_BANDS);
+    drawRun(i, from, to, 1.5 * blur, Math.pow(1 / blur, BOKEH_DIM));
+  }
+}
+
+// 軌跡のうち from から to の手前までを、1本の線で描く
+function drawRun(i, from, to, weight, layer) {
   const c = color(TRAIL_COLORS[i]);
   const trail = pend.trail;
   const n = trail.length;
   const cy = -L * 0.5; // 広げる中心(支点の元の位置)
-  // ここより古い部分には、にじみを付けない(軽くするため)
-  const recent = max(0, n - 1 - floor(HISTORY * RECENT));
-  // 太く薄い線(にじみ)と、細く明るい線(芯)を重ねて、光っているように見せる
-  for (const [weight, layer, from] of [[5, 0.18, recent], [1.5, 1, 0]]) {
-    const strength = layer * TRAIL_BRIGHTNESS[i];
-    strokeWeight(weight);
-    stroke(c);
-    // 点ごとの色(0〜1 の4つの数)。p5.js は点を足すときにこの数を読むだけなので、
-    // 点ごとに stroke() を呼んで色のオブジェクトを作る代わりに、数を直接書き換える(ずっと軽い)
-    const r = _renderer;
-    const fast = Array.isArray(r.curStrokeColor);
-    const rgba = [red(c) / 255, green(c) / 255, blue(c) / 255, 1];
-    beginShape();
-    for (let k = from; k < n; k++) {
-      // ほぼ一直線上の点は省く(最初と最後の点は必ず描く)
-      if (k !== from && k !== n - 1 && trail[k].keep && !trail[k].keep[i]) continue;
-      const ageIndex = n - 1 - k;
-      const alpha = fadeTable[ageIndex] * strength;
-      if (fast) {
-        rgba[3] = alpha;
-        r.curStrokeColor = rgba;
-      } else {
-        c.setAlpha(255 * alpha);
-        stroke(c);
-      }
-      const pt = trail[k][i];
-      const sc = spreadTable[ageIndex];
-      vertex(pt.x * sc, cy + (pt.y - cy) * sc, -ageIndex * zStep);
+  const strength = layer * TRAIL_BRIGHTNESS[i];
+  strokeWeight(weight);
+  stroke(c);
+  // 点ごとの色(0〜1 の4つの数)。p5.js は点を足すときにこの数を読むだけなので、
+  // 点ごとに stroke() を呼んで色のオブジェクトを作る代わりに、数を直接書き換える(ずっと軽い)
+  const r = _renderer;
+  const fast = Array.isArray(r.curStrokeColor);
+  const rgba = [red(c) / 255, green(c) / 255, blue(c) / 255, 1];
+  beginShape();
+  for (let k = from; k < to; k++) {
+    // ほぼ一直線上の点は省く(最初と最後の点は必ず描く)
+    if (k !== from && k !== to - 1 && trail[k].keep && !trail[k].keep[i]) continue;
+    const ageIndex = n - 1 - k;
+    const alpha = fadeTable[ageIndex] * strength;
+    if (fast) {
+      rgba[3] = alpha;
+      r.curStrokeColor = rgba;
+    } else {
+      c.setAlpha(255 * alpha);
+      stroke(c);
     }
-    endShape();
+    const pt = trail[k][i];
+    const sc = spreadTable[ageIndex];
+    vertex(pt.x * sc, cy + (pt.y - cy) * sc, -ageIndex * zStep);
   }
+  endShape();
 }
 
 // 振り子本体:白く光る腕と、それぞれの色で光る点(先端が一番明るく、内側ほど控えめ)
