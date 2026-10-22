@@ -1,5 +1,5 @@
 // 3重振り子の時空図:振り子は手前の平面で揺れ、各点が残す光の軌跡が奥(過去)へ流れていく
-//   中心(支点)はピンク、接続部は青、先端は黄色のライト
+//   色は外側ほど目立ち、内側ほど沈む:先端は黄色のライト、2つ目の関節は赤、1つ目の関節は紫、中心(支点)は青
 // ドラッグで中心をずらせる(離すと、ばねで元の位置に戻る)。カメラは自動で視点を移る
 // R キーでやり直し、V キーで次の視点へ
 
@@ -55,7 +55,8 @@ const KEY_MAX_RATE = 3;     // 全体で1秒に鳴らす最大の数
 
 const BG = [8, 9, 15];
 // 軌跡の色:中心、接続部1、接続部2、先端 の順
-const TRAIL_COLORS = ['#ff5c8a', '#3d7bff', '#3d7bff', '#ffc94d'];
+const TRAIL_COLORS = ['#3557d4', '#8a5cf0', '#f0505e', '#ffc94d'];
+const TRAIL_BRIGHTNESS = [0.55, 0.6, 0.8, 1]; // 軌跡の明るさ。内側ほど控えめにして、注目を先端に集める
 const BODY = [150, 155, 166]; // 振り子本体の色(マットな灰色)
 
 let pend;       // 振り子
@@ -381,7 +382,8 @@ function drawTrail(i) {
   const trail = pend.trail;
   const n = trail.length;
   // 太く薄い線(にじみ)と、細く明るい線(芯)を重ねて、光っているように見せる
-  for (const [weight, strength] of [[5, 0.18], [1.5, 1]]) {
+  for (const [weight, layer] of [[5, 0.18], [1.5, 1]]) {
+    const strength = layer * TRAIL_BRIGHTNESS[i];
     strokeWeight(weight);
     beginShape();
     for (let k = 0; k < n; k++) {
