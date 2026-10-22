@@ -1,13 +1,13 @@
 // 3重振り子の音:振り子の関節や先端が「鍵盤」(sketch.js の keys)に入った瞬間だけ、ベルを1音鳴らす
-//   ・鍵盤ごとに音が決まっている。画面の上にあるほど高い(五音音階)。同じ高さの左右の鍵盤は、右側が半音高い
+//   ・鍵盤ごとに音が決まっている。画面の上にあるほど高い(五音音階)。鍵盤ごとに別の音で、どれが重なっても濁らない
 //   ・振り子が速いほど鍵盤を通る回数が増えるので、カオスが激しいほど音が増える
 //   ・音はエコーと残響で、ゆっくり消えていく(画面の、薄れていく光の軌跡と同じ)
 //   ・鍵盤が左にあれば左から、右にあれば右から聞こえる
 // ブラウザは、画面を一度タップ(クリック)するまで音を出せない。toggleSound() で鳴らす/止める。S キーでも切り替え
 
-// 五音音階(ソ・ラ・ド・レ・ミ)。高い音を控えめにするため、ド(523Hz)までにしている
-// 鍵盤の高さに合わせて、低い方から割り当てる(sketch.js の KEY_NOTES と長さを合わせる)
-const SCALE = [196, 220, 261.63, 293.66, 329.63, 392, 440, 523.25];
+// 五音音階(ド・レ・ミ・ソ・ラ)の 12 音。鍵盤 1 本に 1 音。高い音を控えめにするため、ミ(659Hz)までにしている
+// 下の鍵盤から順に、低い方から割り当てる(sketch.js の KEY_NOTES と長さを合わせる)
+const SCALE = [146.83, 164.81, 196, 220, 261.63, 293.66, 329.63, 392, 440, 523.25, 587.33, 659.25];
 const NOTE_SECONDS = 5;     // 1音が消えるまでの時間
 // ベルの音色:[基本の音の何倍の高さか, 音量, 消えるまでの時間(NOTE_SECONDS に対する割合)]
 const BELL_PARTIALS = [[1, 1, 1], [2, 0.85, 0.75], [3, 0.6, 0.55], [4, 0.45, 0.4], [6, 0.2, 0.25]];
@@ -25,7 +25,7 @@ function toggleSound() {
     unlockIOS();
     audio = buildAudio();
     audio.ctx.resume(); // ブラウザによっては、作っただけでは一時停止のままになる
-    bell(SCALE[4], NOTE_LEVEL, 0); // 鳴り始めの合図
+    bell(SCALE[6], NOTE_LEVEL, 0); // 鳴り始めの合図
     return true;
   }
   const on = audio.ctx.state !== 'running';
@@ -42,9 +42,7 @@ function soundIsOn() {
 window.onKeyHit = (key) => {
   if (!soundIsOn()) return;
   const pan = Math.max(-1, Math.min(1, key.x / (L * 3)));
-  // 左右で同じ高さの鍵盤は、右側を半音上げて、別の音にする(真上と真下の鍵盤は、そのまま)
-  const semitone = key.x > L * 0.01 ? Math.pow(2, 1 / 12) : 1;
-  bell(SCALE[Math.min(key.note, SCALE.length - 1)] * semitone, NOTE_LEVEL, pan);
+  bell(SCALE[Math.min(key.note, SCALE.length - 1)], NOTE_LEVEL, pan);
 };
 
 // ベルの音:基音に、少しずれた高い倍音を重ねる。高い倍音ほど早く消える

@@ -64,7 +64,7 @@ const KEY_RINGS = [
 ];
 const KEY_LENGTH = 0.18;    // 線の長さ(腕の長さの何倍か)。内側の端は 1.9(12・3・6・9 時は 2.1)。カオスの状態で、平均 1 秒に 0.55 回ほど鳴る
                             // 2つ目の関節は距離 2 までしか届かないので、内側の端が 2 より内に入るかどうかで、鳴る頻度が大きく変わる
-const KEY_NOTES = 8;        // 音の段の数(sound.js の SCALE の長さと合わせる)
+const KEY_NOTES = 12;       // 音の段の数(sound.js の SCALE の長さと合わせる)
 const KEY_REST = 0.25;      // 同じ鍵盤を続けて鳴らすまでの、最短の間隔(秒)
 const KEY_MAX_RATE = 3;     // 全体で1秒に鳴らす最大の数
 
@@ -623,13 +623,11 @@ function makeKeys(length = KEY_LENGTH) {
       });
     }
   }
-  // 音の高さ:鍵盤を高さの段に分け、下の段から順に低い音 → 高い音を割り当てる(同じ高さなら同じ音)
+  // 音の高さ:下の鍵盤から順に、低い音 → 高い音を1つずつ割り当てる(どの鍵盤も別の音)
+  // 同じ高さなら左が先。鍵盤の数より音が少なければ、高い方を同じ音にする
   const level = (key) => round(key.y / L, 1); // 腕の長さの 0.1 倍きざみで、同じ高さとみなす
-  const levels = [...new Set(keys.map(level))].sort((a, b) => b - a); // 下(y が大きい)から順
-  for (const key of keys) {
-    const rank = levels.indexOf(level(key));
-    key.note = round((rank * (KEY_NOTES - 1)) / max(1, levels.length - 1));
-  }
+  const order = [...keys].sort((a, b) => level(b) - level(a) || a.x - b.x);
+  order.forEach((key, rank) => (key.note = min(rank, KEY_NOTES - 1)));
 }
 
 // 前のフレームから今のフレームまでに、関節や先端が鍵盤の線を横切ったかを調べる
