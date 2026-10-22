@@ -1,7 +1,7 @@
 <title>3重振り子の時空図</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
-  /* 全画面の時空図だけ。下に、速さの切り替え(左の小さいボタン)と、音のオン/オフ(横長のアイコンボタン)を、うっすら浮かべる */
+  /* 全画面の時空図だけ。下に、速さの切り替え(左半分、3つに分かれたボタン)と、音のオン/オフ(右半分)を、うっすら浮かべる */
   :root {
     --bg: #0c0e16;
     --on: rgba(255, 255, 255, 0.75);       /* 音がオン:うっすら白い背景 */
@@ -23,27 +23,38 @@
     max-width: 600px;
     margin: 0 auto;
     display: grid;
-    grid-template-columns: 76px 1fr;
+    grid-template-columns: 1fr 1fr;
     gap: 10px;
   }
   #controls[hidden] { display: none; }
+  #controls > * { box-sizing: border-box; height: 46px; } /* 速さと音のボタンの高さをそろえる(枠線も含めて 46px) */
+  /* 速さ:×0.5 / ×1 / ×2 の3つに分かれたボタン。選んでいるものだけ、うっすら白い背景 */
   #speed {
-    height: 44px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    padding: 3px;
+    gap: 3px;
+    border: 1px solid var(--off-line);
+    border-radius: 12px;
+  }
+  #speed button {
+    min-width: 0;
     padding: 0;
-    font: 500 14px/1 system-ui, -apple-system, "Helvetica Neue", sans-serif;
+    font: 500 13px/1 system-ui, -apple-system, "Helvetica Neue", sans-serif;
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.04em;
     color: var(--off);
     background: transparent;
-    border: 1px solid var(--off-line);
-    border-radius: 12px;
+    border: 0;
+    border-radius: 9px;
     cursor: pointer;
+    transition: color 0.3s, background-color 0.3s;
     -webkit-tap-highlight-color: transparent;
   }
-  #speed:focus { outline: none; }
-  #speed:focus-visible { outline: 1px solid var(--off); outline-offset: 2px; }
+  #speed button[aria-checked="true"] { color: var(--on); background: var(--on-bg); }
+  #speed button:focus { outline: none; }
+  #speed button:focus-visible { outline: 1px solid var(--off); outline-offset: 1px; }
   #sound {
-    height: 44px;
     padding: 0;
     display: grid;
     place-items: center;
@@ -123,7 +134,11 @@
 </div>
 
 <div id="controls" hidden>
-<button type="button" id="speed" aria-label="振り子の速さ(押すと切り替わる)">×1</button>
+<div id="speed" role="radiogroup" aria-label="振り子の速さ">
+  <button type="button" role="radio" aria-checked="false" data-speed="0.5">×0.5</button>
+  <button type="button" role="radio" aria-checked="true" data-speed="1">×1</button>
+  <button type="button" role="radio" aria-checked="false" data-speed="2">×2</button>
+</div>
 <button type="button" id="sound" aria-pressed="false" aria-label="音を出す">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <path d="M4 9.5h3.2L12 5.5v13l-4.8-4H4z" fill="currentColor" fill-opacity="0.15"></path>
@@ -170,11 +185,12 @@
 
   soundBtn.addEventListener('click', () => setSound(!soundIsOn()));
 
-  // 速さ:押すたびに ×0.5 → ×1 → ×2 と切り替わる(振り子の時間だけが変わり、カメラはそのまま)
-  const SPEEDS = [0.5, 1, 2];
-  const speedBtn = document.getElementById('speed');
-  speedBtn.addEventListener('click', () => {
-    timeScale = SPEEDS[(SPEEDS.indexOf(timeScale) + 1) % SPEEDS.length];
-    speedBtn.textContent = '×' + timeScale;
-  });
+  // 速さ:選んだ倍率で振り子の時間を進める(カメラの動きはそのまま)
+  const speedBtns = document.querySelectorAll('#speed button');
+  for (const btn of speedBtns) {
+    btn.addEventListener('click', () => {
+      timeScale = Number(btn.dataset.speed);
+      for (const b of speedBtns) b.setAttribute('aria-checked', String(b === btn));
+    });
+  }
 </script>

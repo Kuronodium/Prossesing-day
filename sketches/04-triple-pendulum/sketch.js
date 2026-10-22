@@ -5,7 +5,7 @@
 
 const N = 3;                // 振り子の段数
 const G = 9.81;             // 重力
-const SPEED = 1.6;          // 時間の進む速さ(1 で現実と同じ)
+const SPEED = 1.12;         // 時間の進む速さ(1 で現実と同じ)。画面の ×1 はこの速さ
 const SUBSTEPS = 10;        // 1フレームの計算を何回に分けるか(多いほど正確)
 const DT = SPEED / 60 / SUBSTEPS;
 const HISTORY = 900;        // 何フレーム分の過去を残すか(60で1秒)
