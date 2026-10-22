@@ -1,21 +1,19 @@
 // 3重振り子の音:振り子の関節や先端が「鍵盤」(sketch.js の keys)に入った瞬間だけ、ベルを1音鳴らす
-//   ・鍵盤ごとに音が決まっている。内側ほど低く、外側ほど高い(五音音階なので、どれが重なっても濁らない)
+//   ・鍵盤ごとに音が決まっている。画面の上にあるほど高い(五音音階なので、どれが重なっても濁らない)
 //   ・振り子が速いほど鍵盤を通る回数が増えるので、カオスが激しいほど音が増える
-//   ・ヒットしたときの速さで、音の強さが変わる
 //   ・音はエコーと残響で、ゆっくり消えていく(画面の、薄れていく光の軌跡と同じ)
 //   ・鍵盤が左にあれば左から、右にあれば右から聞こえる
 // ブラウザは、画面を一度タップ(クリック)するまで音を出せない。toggleSound() で鳴らす/止める。S キーでも切り替え
 
-// 五音音階(ラ・ド・レ・ミ・ソ)。12個の鍵盤に、低い方から順に割り当てる
-const SCALE = [220, 261.63, 293.66, 329.63, 392, 440, 523.25, 587.33, 659.26, 783.99, 880, 1046.5];
-const NOTE_SECONDS = 3.5;   // 1音が消えるまでの時間
-const NOTE_LOUD = 0.14;     // 一番強く当たったときの音量
-const NOTE_SOFT = 0.04;     // 一番弱く当たったときの音量
-const HARD_HIT = 12;        // この速さ(腕の長さ / 秒)以上で当たると、一番強い音になる
-const MASTER = 0.8;         // 全体の音量
-const ECHO_SECONDS = 0.62;  // エコーの間隔
-const ECHO_FEEDBACK = 0.45; // エコーが次に残る割合(大きいほど長く続く)
-const REVERB_SECONDS = 5;   // 残響の長さ
+// 五音音階(ソ・ラ・ド・レ・ミ)。高い音を控えめにするため、ド(523Hz)までにしている
+// 鍵盤の高さに合わせて、低い方から割り当てる(sketch.js の KEY_NOTES と長さを合わせる)
+const SCALE = [196, 220, 261.63, 293.66, 329.63, 392, 440, 523.25];
+const NOTE_SECONDS = 5;     // 1音が消えるまでの時間
+const NOTE_LEVEL = 0.09;    // 1音の音量(当たった強さに関係なく一定)
+const MASTER = 0.55;        // 全体の音量
+const ECHO_SECONDS = 0.7;   // エコーの間隔
+const ECHO_FEEDBACK = 0.5;  // エコーが次に残る割合(大きいほど長く続く)
+const REVERB_SECONDS = 8;   // 残響の長さ
 
 let audio = null; // 音の仕組み一式。まだ作っていなければ null
 
@@ -25,7 +23,7 @@ function toggleSound() {
     unlockIOS();
     audio = buildAudio();
     audio.ctx.resume(); // ブラウザによっては、作っただけでは一時停止のままになる
-    bell(SCALE[5], 0.08, 0); // 鳴り始めの合図
+    bell(SCALE[4], NOTE_LEVEL, 0); // 鳴り始めの合図
     return true;
   }
   const on = audio.ctx.state !== 'running';
@@ -39,11 +37,10 @@ function soundIsOn() {
 }
 
 // sketch.js から、鍵盤にヒットするたびに呼ばれる
-window.onKeyHit = (key, bob, speed) => {
+window.onKeyHit = (key) => {
   if (!soundIsOn()) return;
-  const s = Math.min(1, speed / HARD_HIT);
   const pan = Math.max(-1, Math.min(1, key.x / (L * 3)));
-  bell(SCALE[key.note % SCALE.length], NOTE_SOFT + (NOTE_LOUD - NOTE_SOFT) * s, pan);
+  bell(SCALE[Math.min(key.note, SCALE.length - 1)], NOTE_LEVEL, pan);
 };
 
 // ベルの音:基音に、少しずれた高い倍音を重ねる。高い倍音ほど早く消える
@@ -53,7 +50,7 @@ function bell(freq, loud, pan) {
   const out = ctx.createStereoPanner();
   out.pan.value = pan;
   out.connect(bus);
-  for (const [ratio, level, decay] of [[1, 1, 1], [2.0, 0.25, 0.5], [3.01, 0.08, 0.25]]) {
+  for (const [ratio, level, decay] of [[1, 1, 1], [2.0, 0.15, 0.4], [3.01, 0.04, 0.2]]) {
     const osc = ctx.createOscillator();
     osc.type = 'sine';
     osc.frequency.value = freq * ratio;
@@ -131,7 +128,7 @@ function buildAudio() {
   const reverb = ctx.createConvolver();
   reverb.buffer = makeReverb(ctx, REVERB_SECONDS);
   const reverbOut = ctx.createGain();
-  reverbOut.gain.value = 0.9;
+  reverbOut.gain.value = 1.1;
   bus.connect(reverb).connect(reverbOut).connect(limiter);
   echoOut.connect(reverb);
 

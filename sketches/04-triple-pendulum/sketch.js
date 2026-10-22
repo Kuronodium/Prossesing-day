@@ -42,10 +42,16 @@ const WANDER = 1;           // カメラがさまよう大きさ(0 で決めポ�
 const ATTENTION = 0.25;     // 見る点が、振り子の先端へ引っぱられる割合
 
 // 鍵盤:支点のまわりに置いた小さな輪。関節か先端が輪に入った瞬間、その音が鳴る
-// r = 支点からの距離(腕の長さの何倍か)、n = その輪に並べる数。内側ほど低い音
+// r = 支点からの距離(腕の長さの何倍か)、n = その輪に並べる数、start = 1つ目を置く向き(0 = 真下、PI = 真上)
+// 輪ごとに等間隔に並べる。音の高さは画面上の高さで決まる(上にあるほど高い音)
 // 1つ目の関節はいつも距離 1 を回るので、そこには置かない(置くと1周ごとに必ず鳴ってしまう)
 // 一番外側の 2 つは、最初の円(腕が伸びきって回る間)に先端が規則正しく通る。円が崩れると、めったに鳴らなくなる
-const KEY_RINGS = [{ r: 1.55, n: 3 }, { r: 2.45, n: 4 }, { r: 2.97, n: 2 }];
+const KEY_RINGS = [
+  { r: 1.55, n: 3, start: Math.PI },
+  { r: 2.45, n: 4, start: Math.PI / 4 },
+  { r: 2.97, n: 2, start: Math.PI / 2 },
+];
+const KEY_NOTES = 8;        // 音の段の数(sound.js の SCALE の長さと合わせる)
 const KEY_SIZE = 0.15;      // 鍵盤の輪の半径(腕の長さの何倍か)
 const KEY_REST = 0.25;      // 同じ鍵盤を続けて鳴らすまでの、最短の間隔(秒)
 const KEY_MAX_RATE = 3;     // 全体で1秒に鳴らす最大の数
@@ -443,23 +449,25 @@ function drawTimeFrames() {
 
 function makeKeys() {
   keys = [];
-  const total = KEY_RINGS.reduce((sum, ring) => sum + ring.n, 0);
-  let i = 0;
-  KEY_RINGS.forEach((ring) => {
-    const offset = random(TWO_PI);
+  for (const ring of KEY_RINGS) {
     for (let k = 0; k < ring.n; k++) {
-      // 等間隔から少しだけずらして、規則的になりすぎないようにする
-      const a = offset + (TWO_PI * k) / ring.n + random(-0.3, 0.3);
+      const a = ring.start + (TWO_PI * k) / ring.n;
       keys.push({
         x: ring.r * L * sin(a),
         y: -L * 0.5 + ring.r * L * cos(a),
-        note: round((i++ * 11) / (total - 1)), // 内側の輪から順に、低い音 → 高い音(音階の12音に散らす)
         glow: 0,
         col: color(255),
         last: -1,
       });
     }
-  });
+  }
+  // 音の高さ:鍵盤を高さの段に分け、下の段から順に低い音 → 高い音を割り当てる(同じ高さなら同じ音)
+  const level = (key) => round(key.y / L, 1); // 腕の長さの 0.1 倍きざみで、同じ高さとみなす
+  const levels = [...new Set(keys.map(level))].sort((a, b) => b - a); // 下(y が大きい)から順
+  for (const key of keys) {
+    const rank = levels.indexOf(level(key));
+    key.note = round((rank * (KEY_NOTES - 1)) / max(1, levels.length - 1));
+  }
 }
 
 // 前のフレームから今のフレームまでに、関節や先端が鍵盤の輪に入ったかを調べる
