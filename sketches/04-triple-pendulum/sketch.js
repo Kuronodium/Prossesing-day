@@ -60,9 +60,9 @@ const CAM_SETTLE = 4;       // 始まりは静止した正面から、この秒�
 // 時計の文字盤のように 12 本。12・3・6・9 時の 4 本は少し外側に置き、2 つ目の関節は届かず、先端だけが鳴らせる
 const KEY_RINGS = [
   { r: 2.08, n: 12, start: Math.PI, skip: 3 }, // skip:3 本ごとに 1 本(12・3・6・9 時)を抜く
-  { r: 2.28, n: 4, start: Math.PI },
+  { r: 2.45, n: 4, start: Math.PI, weight: 3 }, // weight:線の太さ(ほかは 1.5)。時計の太い目盛りのように
 ];
-const KEY_LENGTH = 0.18;    // 線の長さ(腕の長さの何倍か)。内側の端は 1.9(12・3・6・9 時は 2.1)。カオスの状態で、平均 1 秒に 0.55 回ほど鳴る
+const KEY_LENGTH = 0.18;    // 線の長さ(腕の長さの何倍か)。内側の端は 1.9(12・3・6・9 時は 2.27)。カオスの状態で、平均 1 秒に 0.55 回ほど鳴る
                             // 2つ目の関節は距離 2 までしか届かないので、内側の端が 2 より内に入るかどうかで、鳴る頻度が大きく変わる
 const KEY_NOTES = 12;       // 音の段の数(sound.js の SCALE の長さと合わせる)
 const KEY_REST = 0.25;      // 同じ鍵盤を続けて鳴らすまでの、最短の間隔(秒)
@@ -618,6 +618,7 @@ function makeKeys(length = KEY_LENGTH) {
         p2: inner,
         x: (outer.x + inner.x) / 2, // 線の真ん中(音の左右と、高さの段に使う)
         y: (outer.y + inner.y) / 2,
+        weight: ring.weight || 1.5,
         glow: 0,
         last: -1,
       });
@@ -674,13 +675,13 @@ function drawKeys() {
   const fadeStep = pow(0.95, min(deltaTime, 100) / (1000 / 60)); // 画面の更新の速さによらず、同じ速さで光が消える
   for (const key of keys) {
     // ふだんから、はっきりした白い線
-    strokeWeight(1.5);
+    strokeWeight(key.weight);
     stroke(255, 255, 255, 190);
     line(key.p1.x, key.p1.y, 0, key.p2.x, key.p2.y, 0);
     if (key.glow > 0.01) {
       // 鳴ったときは、線が太くなって光る
       const g = key.glow;
-      for (const [weight, a] of [[1.5 + 3 * g, 255], [8 + 6 * g, 80], [18 + 10 * g, 28]]) {
+      for (const [weight, a] of [[key.weight + 3 * g, 255], [8 + 6 * g, 80], [18 + 10 * g, 28]]) {
         stroke(255, 255, 255, a * g);
         strokeWeight(weight);
         line(key.p1.x, key.p1.y, 0, key.p2.x, key.p2.y, 0);
