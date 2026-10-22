@@ -31,7 +31,10 @@ const VIEWS = [
   { name: '斜め上', yaw: 0.25, pitch: 0.5, dist: 16, focus: 0.25 },
 ];
 const VIEW_SECONDS = 10;    // 1つの視点にとどまる時間
-const MOVE_SECONDS = 3;     // 次の視点へ移る時間
+const CAM_SPRING = 1.4;     // カメラを次の視点へ引き寄せるばねの強さ(大きいほど早く着く)
+const CAM_DAMP = 1.9;       // そのばねの減衰(小さいほど、行き過ぎてから戻る)
+const WANDER = 1;           // カメラがさまよう大きさ(0 で決めポイントに止まる)
+const ATTENTION = 0.25;     // 見る点が、振り子の先端へ引っぱられる割合
 
 const BG = [8, 9, 15];
 // 軌跡の色:中心、接続部1、接続部2、先端 の順
@@ -45,8 +48,8 @@ let L;          // 腕1本の長さ(画面上のピクセル)
 let zStep;      // 1フレームで、どれだけ奥へ流れるか
 let frameIndex; // 始まってからのフレーム数
 let viewIndex = 0;   // いまの視点
-let viewStart = 0;   // いまの視点に移り始めた時刻(秒)
-let camFrom = null;  // 移る前のカメラ(移っている途中の位置から、なめらかにつなぐため)
+let viewStart = 0;   // いまの視点に移った時刻(秒)
+let cam = null;      // いまのカメラの状態と速さ(重さのあるカメラとして動かす)
 
 function setup() {
   pixelDensity(min(2, displayDensity()));
@@ -224,58 +227,81 @@ function points(th) {
 }
 
 // ---- カメラ ----
+// カメラは「重さのある手持ちカメラ」として動かす。行きたい場所(目標)へ、ばねで引き寄せられる
+// 目標 = 決めポイントの視点 + 不規則な漂い + 振り子の先端への注目
+// さらに最後に、手持ちの細かい揺れを直接足す(ばねを通すと均されて消えてしまうため)
 
-// いまのカメラ設定(視点 + ゆっくりした漂い)
-function currentCam() {
-  const t = millis() / 1000;
-  if (!camFrom) return drifted(VIEWS[viewIndex], t);
-  const k = constrain((t - viewStart) / MOVE_SECONDS, 0, 1);
-  const e = k * k * (3 - 2 * k); // ゆっくり動き出して、ゆっくり止まる
-  const to = drifted(VIEWS[viewIndex], t);
-  const from = camFrom;
-  // 角度は近い向きに回る
-  let dy = to.yaw - from.yaw;
-  dy = ((dy + PI) % TWO_PI + TWO_PI) % TWO_PI - PI;
+const CAM_KEYS = ['yaw', 'pitch', 'dist', 'focus', 'lookX', 'lookY', 'roll'];
+
+// カメラが行きたい場所
+function camGoal(t) {
+  const v = VIEWS[viewIndex];
+  // n(速さ, 番号):-1 〜 1 の、なめらかで不規則な値
+  const n = (speed, k) => (noise(t * speed, k * 17.3) - 0.5) * 2;
+  const tip = points(pend.th)[N];
+  const pivotY = -L * 0.5 + pivot.y * L;
   return {
-    yaw: from.yaw + dy * e,
-    pitch: lerp(from.pitch, to.pitch, e),
-    dist: lerp(from.dist, to.dist, e),
-    focus: lerp(from.focus, to.focus, e),
+    yaw: v.yaw + WANDER * 0.22 * n(0.07, 1),
+    pitch: v.pitch + WANDER * 0.09 * n(0.06, 3),
+    dist: v.dist * (1 + WANDER * 0.14 * n(0.05, 5)) * (drag ? 0.85 : 1), // 干渉している間は少し寄る
+    focus: v.focus + WANDER * 0.05 * n(0.04, 6),
+    lookX: tip.x * ATTENTION,
+    lookY: (tip.y - pivotY) * ATTENTION,
+    roll: WANDER * 0.03 * n(0.09, 7), // ごくわずかな傾き
   };
 }
 
-// 視点に、ゆっくりした揺らぎ(回り込み・上下・寄り引き)を足す
-function drifted(v, t) {
+// 手持ちの細かい揺れ(呼吸のような、ゆっくりした小さな揺れ)
+function handheld(t) {
+  const n = (speed, k) => (noise(t * speed, k * 31.7) - 0.5) * 2;
   return {
-    yaw: v.yaw + 0.18 * sin(t * 0.11),
-    pitch: v.pitch + 0.06 * sin(t * 0.17),
-    dist: v.dist * (1 + 0.1 * sin(t * 0.07)),
-    focus: v.focus,
+    yaw: WANDER * 0.035 * n(0.45, 1),
+    pitch: WANDER * 0.02 * n(0.5, 2),
+    dist: 1 + WANDER * 0.025 * n(0.35, 3),
+    roll: WANDER * 0.01 * n(0.6, 4),
   };
 }
 
 function updateCamera() {
   const t = millis() / 1000;
   if (t - viewStart > VIEW_SECONDS) nextView();
-  const c = currentCam();
+  const goal = camGoal(t);
+  if (!cam) {
+    cam = { vel: {} };
+    for (const k of CAM_KEYS) {
+      cam[k] = goal[k];
+      cam.vel[k] = 0;
+    }
+  }
+  // ばねで目標へ引き寄せる(1フレーム = 1/60 秒)
+  const dt = 1 / 60;
+  for (const k of CAM_KEYS) {
+    const a = CAM_SPRING * (goal[k] - cam[k]) - CAM_DAMP * cam.vel[k];
+    cam.vel[k] += a * dt;
+    cam[k] += cam.vel[k] * dt;
+  }
+
+  const h = handheld(t);
+  const yaw = cam.yaw + h.yaw;
+  const pitch = cam.pitch + h.pitch;
+  const roll = cam.roll + h.roll;
   // 縦長の画面では、遠くから見ないとはみ出すので距離を伸ばす
   const fit = max(1, 0.85 / (width / height));
-  const d = c.dist * L * fit;
-  const tx = 0;
-  const ty = -L * 0.5;
-  const tz = -c.focus * L * DEPTH;
+  const d = cam.dist * h.dist * L * fit;
+  const tx = cam.lookX;
+  const ty = -L * 0.5 + cam.lookY;
+  const tz = -cam.focus * L * DEPTH;
   camera(
-    tx + d * sin(c.yaw) * cos(c.pitch),
-    ty - d * sin(c.pitch),
-    tz + d * cos(c.yaw) * cos(c.pitch),
+    tx + d * sin(yaw) * cos(pitch),
+    ty - d * sin(pitch),
+    tz + d * cos(yaw) * cos(pitch),
     tx, ty, tz,
-    0, 1, 0
+    sin(roll), cos(roll), 0
   );
   perspective(PI / 3, width / height, L * 0.5, L * 200);
 }
 
 function nextView() {
-  camFrom = currentCam();
   viewIndex = (viewIndex + 1) % VIEWS.length;
   viewStart = millis() / 1000;
 }
