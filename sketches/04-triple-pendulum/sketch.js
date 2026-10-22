@@ -21,6 +21,7 @@ const EXPAND_CURVE = 1;     // 広がり方(1 でまっすぐな円錐、大き�
 // (真上から放すと、円が続く時間はずらし幅ではなく回す速さでほぼ決まる:1.8〜2.0 で約 1.2 秒、2.2 で約 1.6 秒、2.5 で約 2.3 秒)
 const START_SPIN = 1.9;     // 最初に回す速さ(ラジアン / 秒)。1.9 で約 1.2 秒
 const START_NUDGE = 0.01;   // 腕どうしのずらし幅(ラジアン)
+const START_DIR = -1;       // 回す向き(-1 = 時計回り、1 = 反時計回り)。ずらし方も一緒に反転して、鏡に映した同じ動きにする
 
 // 中心(支点)を動かすばね。強さが大きいほど速く戻り、減衰が大きいほど弾まずに止まる
 const SPRING = 60;          // 離したときに、元の位置へ戻すばねの強さ
@@ -82,8 +83,9 @@ function restart() {
   L = min(width, height) * 0.1;
   zStep = (L * DEPTH) / HISTORY;
   frameIndex = 0;
-  const th = [PI, PI + START_NUDGE, PI - START_NUDGE];
-  pend = { th, w: [START_SPIN, START_SPIN, START_SPIN], trail: [] };
+  const th = [PI, PI + START_DIR * START_NUDGE, PI - START_DIR * START_NUDGE];
+  const spin = START_DIR * START_SPIN;
+  pend = { th, w: [spin, spin, spin], trail: [] };
   pend.baseEnergy = energy(pend); // 最初のエネルギー。揺さぶって増えても、ここへ戻っていく
   pivot = { x: 0, y: 0, vx: 0, vy: 0 };
   drag = null;
