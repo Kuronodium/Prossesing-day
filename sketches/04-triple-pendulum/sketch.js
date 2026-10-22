@@ -12,8 +12,11 @@ const HISTORY = 1200;       // 何フレーム分の過去を残すか(60で1秒
 const DEPTH = 18;           // 時間の奥行きの長さ(腕の長さの何倍か)。短いほど、軌跡が手前に詰まって見える
 const TRAIL_FLOOR = 0.25;   // 古い軌跡も、この明るさまでは残す(最後の 1 割で消える)
 const FADE_SPEED = 3.5;     // 最初にどれだけ急に暗くなるか(大きいほど、手前の光がすぐ落ち着く。小さいほど中間が明るい)
-const RECENT = 1 / 3;       // 新しい方からこの割合(約 7 秒分)は、すべての点を使い、にじみも付けて描く
-const THIN_STEP = 2;        // それより古い部分は、この数ごとに 1 点だけ使って描く(軽くするため。大きくしすぎると、奥の線が折れ線に見える)
+const RECENT = 1 / 3;       // 新しい方からこの割合(約 7 秒分)にだけ、にじみを付けて描く
+const SIMPLIFY = 0.002;     // 軌跡のうち、前後の点を結んだ線からのずれがこれより小さい点は描かない(腕の長さに対する割合)
+                            // 奥では最大 7.5 倍に広がるので、広がった後でも 1 ピクセル未満のずれに収まる小ささにしている
+                            // 振り子の動きはなめらかなので、ほぼ一直線上の点を省いても見た目は変わらず、描く点がぐっと減る
+const SIMPLIFY_RUN = 16;    // 続けて省く点の最大数
 const EXPAND = 6.5;         // 一番古い過去を、どれだけ広げるか(0 で広げない。6.5 なら 7.5 倍)
 const EXPAND_CURVE = 1;     // 広がり方(1 でまっすぐな円錐、大きいほど奥で急に開く)
 // 始まり方:毎回同じ。真上から、3本の腕をほんの少しずつずらし、そろって回し始める
@@ -85,6 +88,7 @@ let camStart = 0;    // カメラが動き始めた時刻(秒)
 function setup() {
   pixelDensity(min(2, displayDensity()));
   createCanvas(windowWidth, windowHeight, WEBGL);
+  if (webglVersion === WEBGL2) makeBloom(); // なめらかな線のまま裏の画像に描けるのは WebGL2 だけ
   restart();
 }
 
@@ -95,6 +99,8 @@ function restart() {
   const th = [PI, PI + START_DIR * START_NUDGE, PI - START_DIR * START_NUDGE];
   const spin = START_DIR * START_SPIN;
   pend = { th, w: [spin, spin, spin], trail: [] };
+  simplify = [...Array(N + 1)].map(() => ({ last: null, skipped: [] }));
+  if (!fadeTable) makeTables();
   pend.baseEnergy = energy(pend); // 最初のエネルギー。揺さぶって増えても、ここへ戻っていく
   pivot = { x: 0, y: 0, vx: 0, vy: 0 };
   drag = null;
@@ -108,9 +114,81 @@ function restart() {
 }
 
 function draw() {
-  background(BG);
   // 実際に経過した時間で進める(画面の更新が 60 回/秒でも 144 回/秒でも、同じ速さで動くように)
   const elapsed = min(deltaTime, 100) / 1000;
+  watchSpeed(elapsed);
+  if (bloom) {
+    bloom.scene.begin();
+    drawingToBloom = true;
+    drawScene(elapsed);
+    drawingToBloom = false;
+    bloom.scene.end();
+    applyBloom();
+  } else {
+    drawScene(elapsed);
+  }
+}
+
+// ---- ブルーム(明るい部分のまわりに、光がにじむ効果)----
+// 画面をいったん裏の画像に描き、それを小さく縮めてぼかしたものを、光として重ねる
+// 縮めてからぼかすので軽い。それでも動きがカクつく端末では、自動で切る
+const BLOOM_SCALE = 0.25;    // ぼかす画像の大きさ(画面に対する割合)
+const BLOOM_BLUR = 3;        // ぼかしの強さ
+const BLOOM_STRENGTH = 0.9;  // 重ねる光の強さ(0〜1)
+const SLOW_FRAME_MS = 26;    // 1フレームがこれより遅い状態が続いたら、ブルームを切る
+let bloom = null;
+let slowMs = 0;
+let drawingToBloom = false; // いま裏の画像に描いているか
+
+function makeBloom() {
+  if (bloom) {
+    bloom.scene.remove();
+    bloom.glow.remove();
+  }
+  bloom = {
+    scene: createFramebuffer({ antialias: true }),
+    glow: createFramebuffer({
+      width: max(1, floor(width * BLOOM_SCALE)),
+      height: max(1, floor(height * BLOOM_SCALE)),
+      density: 1,
+      depth: false,
+    }),
+  };
+}
+
+function applyBloom() {
+  const { scene, glow } = bloom;
+  glow.begin();
+  clear();
+  noStroke();
+  image(scene, -glow.width / 2, -glow.height / 2, glow.width, glow.height);
+  filter(BLUR, BLOOM_BLUR);
+  glow.end();
+
+  background(BG);
+  noStroke();
+  image(scene, -width / 2, -height / 2, width, height);
+  blendMode(ADD);
+  tint(255, 255 * BLOOM_STRENGTH);
+  image(glow, -width / 2, -height / 2, width, height);
+  noTint();
+  blendMode(BLEND);
+}
+
+// 動きが重い状態(1フレーム SLOW_FRAME_MS ミリ秒超え)が合計2秒続いたら、ブルームを切る
+function watchSpeed(elapsed) {
+  if (!bloom || !running) return;
+  if (elapsed * 1000 > SLOW_FRAME_MS) slowMs += elapsed * 1000;
+  else slowMs = max(0, slowMs - elapsed * 500);
+  if (slowMs > 2000) {
+    bloom.scene.remove();
+    bloom.glow.remove();
+    bloom = null;
+  }
+}
+
+function drawScene(elapsed) {
+  background(BG);
   updateCamera(elapsed);
 
   if (running) {
@@ -145,6 +223,7 @@ function step() {
   const prevPts = pend.trail[pend.trail.length - 1];
   const nowPts = points(pend.th);
   pend.trail.push(nowPts);
+  markKeep(prevPts, nowPts);
   if (prevPts) checkKeys(prevPts, nowPts);
   if (pend.trail.length > HISTORY) pend.trail.shift();
   frameIndex++;
@@ -369,7 +448,8 @@ function updateCamera(elapsed = 1 / 60) {
   const near = L * 0.5;
   const top = near * tan(PI / 6);
   const right = top * (width / height);
-  const shift = top * 2 * LIFT;
+  // 裏の画像(ブルーム用)に描くときは上下が画面と逆になるので、ずらす向きも逆にする
+  const shift = top * 2 * LIFT * (drawingToBloom ? -1 : 1);
   frustum(-right, right, -top - shift, top - shift, near, L * 200);
 }
 
@@ -379,6 +459,45 @@ function nextView() {
 }
 
 // ---- 描画 ----
+
+// 軌跡の点を省くかどうかを決める。新しい点が来たときに、1つ前の点が
+// 「最後に残した点」と「新しい点」を結んだ線の近くにあれば省く(それまでに省いた点も、すべてその線の近くにある場合だけ)
+// 奥行きと広がりは点の順番に比例しているので、省いた点の位置は前後の点を結ぶ線の上にぴったり乗る
+let simplify;
+function markKeep(prev, now) {
+  now.keep = new Array(N + 1).fill(true);
+  if (!prev) return;
+  const tol = SIMPLIFY * L;
+  for (let i = 0; i <= N; i++) {
+    const s = simplify[i];
+    if (!s.last) {
+      s.last = prev;
+      continue;
+    }
+    const a = s.last[i];
+    const b = now[i];
+    const near = (p) => segmentDist(a, b, p) < tol;
+    if (s.skipped.length < SIMPLIFY_RUN && near(prev[i]) && s.skipped.every(near)) {
+      prev.keep[i] = false;
+      s.skipped.push(prev[i]);
+    } else {
+      s.last = prev;
+      s.skipped = [];
+    }
+  }
+}
+
+// 明るさと広がりは、何フレーム前の点かだけで決まるので、表にしておく(1点ごとに指数関数を計算しないため)
+let fadeTable = null;
+let spreadTable = null;
+function makeTables() {
+  fadeTable = [];
+  spreadTable = [];
+  for (let a = 0; a <= HISTORY; a++) {
+    fadeTable[a] = fadeAt(a / HISTORY);
+    spreadTable[a] = spread(a / HISTORY);
+  }
+}
 
 // 過去の明るさ。age は 0(現在)〜 1(一番古い過去)
 // 新しい方で最初にぐっと下がり、そのあと、なだらかに TRAIL_FLOOR へ近づく。一番古い 1 割だけ、最後に消えていく
@@ -399,21 +518,34 @@ function drawTrail(i) {
   const trail = pend.trail;
   const n = trail.length;
   const cy = -L * 0.5; // 広げる中心(支点の元の位置)
-  // ここより古い部分は、軽くするために間引いて描き、にじみも付けない
+  // ここより古い部分には、にじみを付けない(軽くするため)
   const recent = max(0, n - 1 - floor(HISTORY * RECENT));
   // 太く薄い線(にじみ)と、細く明るい線(芯)を重ねて、光っているように見せる
   for (const [weight, layer, from] of [[5, 0.18, recent], [1.5, 1, 0]]) {
     const strength = layer * TRAIL_BRIGHTNESS[i];
     strokeWeight(weight);
+    stroke(c);
+    // 点ごとの色(0〜1 の4つの数)。p5.js は点を足すときにこの数を読むだけなので、
+    // 点ごとに stroke() を呼んで色のオブジェクトを作る代わりに、数を直接書き換える(ずっと軽い)
+    const r = _renderer;
+    const fast = Array.isArray(r.curStrokeColor);
+    const rgba = [red(c) / 255, green(c) / 255, blue(c) / 255, 1];
     beginShape();
-    for (let k = from; k < n; k += k < recent ? THIN_STEP : 1) {
-      const age = (n - 1 - k) / HISTORY;
-      const fade = fadeAt(age);
-      c.setAlpha(255 * fade * strength);
-      stroke(c);
+    for (let k = from; k < n; k++) {
+      // ほぼ一直線上の点は省く(最初と最後の点は必ず描く)
+      if (k !== from && k !== n - 1 && trail[k].keep && !trail[k].keep[i]) continue;
+      const ageIndex = n - 1 - k;
+      const alpha = fadeTable[ageIndex] * strength;
+      if (fast) {
+        rgba[3] = alpha;
+        r.curStrokeColor = rgba;
+      } else {
+        c.setAlpha(255 * alpha);
+        stroke(c);
+      }
       const pt = trail[k][i];
-      const sc = spread(age);
-      vertex(pt.x * sc, cy + (pt.y - cy) * sc, -(n - 1 - k) * zStep);
+      const sc = spreadTable[ageIndex];
+      vertex(pt.x * sc, cy + (pt.y - cy) * sc, -ageIndex * zStep);
     }
     endShape();
   }
@@ -512,6 +644,15 @@ function checkKeys(prev, now) {
   }
 }
 
+// 線分 a-c と点 p の最短距離
+function segmentDist(a, c, p) {
+  const dx = c.x - a.x;
+  const dy = c.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  const u = len2 > 0 ? constrain(((p.x - a.x) * dx + (p.y - a.y) * dy) / len2, 0, 1) : 0;
+  return dist(a.x + dx * u, a.y + dy * u, p.x, p.y);
+}
+
 // 線分 a-b と線分 c-d が交わるか
 function segmentsCross(a, b, c, d) {
   const side = (p, q, r) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
@@ -522,22 +663,24 @@ function segmentsCross(a, b, c, d) {
   return d1 * d2 < 0 && d3 * d4 < 0;
 }
 
-// 鍵盤:ふだんは薄い白い線、ヒットすると白く光ってゆっくり消える
+// 鍵盤:ふだんからはっきりした白い線。鳴ると太くなって光り、ゆっくり元に戻る
 function drawKeys() {
   noFill();
+  const fadeStep = pow(0.95, min(deltaTime, 100) / (1000 / 60)); // 画面の更新の速さによらず、同じ速さで光が消える
   for (const key of keys) {
+    // ふだんから、はっきりした白い線
     strokeWeight(1.5);
-    stroke(255, 255, 255, 70);
+    stroke(255, 255, 255, 190);
     line(key.p1.x, key.p1.y, 0, key.p2.x, key.p2.y, 0);
     if (key.glow > 0.01) {
-      const c = color(255);
-      for (const [weight, a] of [[2.5, 230], [7, 70], [14, 25]]) {
-        c.setAlpha(a * key.glow);
-        stroke(c);
+      // 鳴ったときは、線が太くなって光る
+      const g = key.glow;
+      for (const [weight, a] of [[1.5 + 3 * g, 255], [8 + 6 * g, 80], [18 + 10 * g, 28]]) {
+        stroke(255, 255, 255, a * g);
         strokeWeight(weight);
         line(key.p1.x, key.p1.y, 0, key.p2.x, key.p2.y, 0);
       }
-      key.glow *= 0.95;
+      key.glow *= fadeStep;
     }
   }
 }
@@ -546,6 +689,7 @@ function drawKeys() {
 // 振り子や軌跡の位置は腕の長さ L に比例しているので、新しい L に合わせて伸び縮みさせる
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
+  if (bloom) makeBloom();
   const k = (min(width, height) * 0.1) / L;
   L *= k;
   zStep = (L * DEPTH) / HISTORY;
