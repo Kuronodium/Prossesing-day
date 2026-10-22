@@ -23,12 +23,12 @@ const SETTLE = 0.02;        // 揺さぶって増えたエネルギーを、1フ
 
 // カメラの視点。yaw = 左右の回り込み、pitch = 見下ろす角度、dist = 距離(腕の長さの何倍か)
 // focus = 時間の軸のどこを見るか(0 = 現在、1 = 一番古い過去)
+// どの視点も「現在が手前、過去が奥」という向きは崩さない
 const VIEWS = [
-  { name: '斜め', yaw: 0.5, pitch: 0.22, dist: 17, focus: 0.22 },
+  { name: '斜め右', yaw: 0.5, pitch: 0.22, dist: 17, focus: 0.22 },
   { name: '正面', yaw: 0.05, pitch: 0.08, dist: 10, focus: 0.15 },
-  { name: '真横', yaw: Math.PI / 2, pitch: 0.12, dist: 17, focus: 0.42 },
-  { name: '上', yaw: 0.35, pitch: 1.15, dist: 22, focus: 0.45 },
-  { name: '過去から', yaw: Math.PI - 0.45, pitch: 0.25, dist: 16, focus: 0.55 },
+  { name: '斜め左', yaw: -0.5, pitch: 0.18, dist: 17, focus: 0.22 },
+  { name: '斜め上', yaw: 0.25, pitch: 0.5, dist: 16, focus: 0.25 },
 ];
 const VIEW_SECONDS = 10;    // 1つの視点にとどまる時間
 const MOVE_SECONDS = 3;     // 次の視点へ移る時間
