@@ -34,9 +34,13 @@ const SETTLE = 0.02;        // 揺さぶって増えたエネルギーを、1フ
 
 // カメラの視点。yaw = 左右の回り込み、pitch = 見下ろす角度、dist = 距離(腕の長さの何倍か)
 // どの視点も「現在が手前、過去が奥」という向きは崩さない
+// slide = 見る点を、時間の軸に沿ってスライドさせる範囲(0 = 現在、1 = 一番古い過去)。その視点にいる間、ゆっくり動く
+// slide がない視点は、常に原点を見て円弧状に回る。並び順は、カメラが同じ向きにぐるっと回り続ける順にしている
 const VIEWS = [
   { name: '正面', yaw: 0.05, pitch: 0.08, dist: 10 }, // 最初はいつも正面から
   { name: '斜め右', yaw: 0.5, pitch: 0.22, dist: 15 },
+  { name: '横から', yaw: Math.PI / 2, pitch: 0.05, dist: 20, slide: [0.08, 0.4] }, // 横向きの三角形が、横にスライドする
+  { name: '上から', yaw: Math.PI, pitch: 1.35, dist: 24, slide: [0.08, 0.4] },     // A のような三角形が、縦にスライドする
   { name: '斜め左', yaw: -0.5, pitch: 0.18, dist: 15 },
   { name: '斜め上', yaw: 0.25, pitch: 0.5, dist: 14 },
 ];
@@ -268,10 +272,10 @@ function points(th) {
 // ---- カメラ ----
 // カメラは「重さのある手持ちカメラ」として動かす。行きたい場所(目標)へ、ばねで引き寄せられる
 // 目標 = 決めポイントの視点 + 不規則な漂い。さらに最後に、手持ちの細かい揺れを直接足す(ばねを通すと均されて消えてしまうため)
-// カメラは常に振り子の原点(支点の元の位置)を見る。回り込みも揺れも寄り引きも原点を中心にした動きなので、
-// 原点は画面の真ん中から動かない
+// slide のない視点では、カメラは常に振り子の原点(支点の元の位置)を見る。回り込みも揺れも寄り引きも
+// 原点を中心にした動きなので、原点は画面上の決まった1点から動かない。slide のある視点では、見る点ごと平行に動く
 
-const CAM_KEYS = ['yaw', 'pitch', 'dist', 'roll'];
+const CAM_KEYS = ['yaw', 'pitch', 'dist', 'roll', 'slide'];
 
 // カメラが行きたい場所
 // いまの揺れの大きさ。始まった直後は 0(静止)で、CAM_SETTLE 秒かけて WANDER まで大きくなる
@@ -290,7 +294,13 @@ function camGoal(t) {
     pitch: v.pitch + w * 0.09 * n(0.06, 3),
     dist: v.dist * (1 + w * 0.14 * n(0.05, 5)) * (drag ? 0.85 : 1), // 干渉している間は少し寄る
     roll: w * 0.03 * n(0.09, 7), // ごくわずかな傾き
+    slide: v.slide ? lerp(v.slide[0], v.slide[1], smoothstep01((t - viewStart) / VIEW_SECONDS)) : 0,
   };
+}
+
+function smoothstep01(x) {
+  const k = constrain(x, 0, 1);
+  return k * k * (3 - 2 * k);
 }
 
 // 手持ちの細かい揺れ(呼吸のような、ゆっくりした小さな揺れ)
@@ -309,6 +319,7 @@ function updateCamera() {
   const t = millis() / 1000;
   if (t - viewStart > VIEW_SECONDS) nextView();
   const goal = camGoal(t);
+  if (cam) goal.yaw += TWO_PI * round((cam.yaw - goal.yaw) / TWO_PI); // 一周ぶんずれていたら、近い向きから回る
   if (!cam) {
     cam = { vel: {} };
     for (const k of CAM_KEYS) {
@@ -333,14 +344,16 @@ function updateCamera() {
   const d = cam.dist * h.dist * L * fit;
   const tx = 0;
   const ty = -L * 0.5; // 振り子の原点
-  const tz = 0;
-  camera(
-    tx + d * sin(yaw) * cos(pitch),
-    ty - d * sin(pitch),
-    tz + d * cos(yaw) * cos(pitch),
-    tx, ty, tz,
-    sin(roll), cos(roll), 0
-  );
+  const tz = -cam.slide * L * DEPTH;
+  const ex = d * sin(yaw) * cos(pitch);
+  const ey = -d * sin(pitch);
+  const ez = d * cos(yaw) * cos(pitch);
+  // カメラの上方向:見下ろす角度に合わせて計算する(真上から見ても破綻しない)。そこに傾き(roll)を加える
+  const up = createVector(sin(yaw) * sin(pitch), cos(pitch), cos(yaw) * sin(pitch));
+  const forward = createVector(-ex, -ey, -ez).normalize();
+  const side = p5.Vector.cross(forward, up).normalize();
+  up.mult(cos(roll)).add(side.mult(sin(roll)));
+  camera(tx + ex, ty + ey, tz + ez, tx, ty, tz, up.x, up.y, up.z);
   // 絵全体を少し上に持ち上げる(カメラの向きは変えず、映す範囲だけを下にずらす。原点は画面上の決まった1点から動かない)
   const near = L * 0.5;
   const top = near * tan(PI / 6);
