@@ -9,8 +9,8 @@
 // 鍵盤の高さに合わせて、低い方から割り当てる(sketch.js の KEY_NOTES と長さを合わせる)
 const SCALE = [196, 220, 261.63, 293.66, 329.63, 392, 440, 523.25];
 const NOTE_SECONDS = 5;     // 1音が消えるまでの時間
-const NOTE_LEVEL = 0.09;    // 1音の音量(当たった強さに関係なく一定)
-const MASTER = 0.55;        // 全体の音量
+const NOTE_LEVEL = 0.16;    // 1音の音量(当たった強さに関係なく一定)
+const MASTER = 1;           // 全体の音量
 const ECHO_SECONDS = 0.7;   // エコーの間隔
 const ECHO_FEEDBACK = 0.5;  // エコーが次に残る割合(大きいほど長く続く)
 const REVERB_SECONDS = 8;   // 残響の長さ
@@ -50,7 +50,8 @@ function bell(freq, loud, pan) {
   const out = ctx.createStereoPanner();
   out.pan.value = pan;
   out.connect(bus);
-  for (const [ratio, level, decay] of [[1, 1, 1], [2.0, 0.15, 0.4], [3.01, 0.04, 0.2]]) {
+  // 1 オクターブ上の倍音を少し強めにしている(スマホの小さなスピーカーは低い音をほとんど鳴らせないため)
+  for (const [ratio, level, decay] of [[1, 1, 1], [2.0, 0.35, 0.5], [3.01, 0.1, 0.25]]) {
     const osc = ctx.createOscillator();
     osc.type = 'sine';
     osc.frequency.value = freq * ratio;
@@ -96,10 +97,11 @@ function silentWav() {
 function buildAudio() {
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
 
-  // 出口:音量の上限(リミッター)をかけて、うるさくなりすぎないようにする
+  // 出口:音が重なったときだけ抑えて、音割れを防ぐ(ふだんの音量はなるべく削らない)
   const limiter = ctx.createDynamicsCompressor();
-  limiter.threshold.value = -18;
-  limiter.ratio.value = 12;
+  limiter.threshold.value = -8;
+  limiter.knee.value = 6;
+  limiter.ratio.value = 4;
   limiter.attack.value = 0.01;
   limiter.release.value = 0.3;
   const master = ctx.createGain();
