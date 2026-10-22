@@ -21,6 +21,14 @@
   html, body { height: 100%; margin: 0; overflow: hidden; }
   body { background: var(--bg); }
   canvas { position: fixed; inset: 0; display: block; touch-action: none; }
+  /* 周辺減光:画面のふちを少しだけ暗くして、中心に目が行くようにする(CSS だけなので描画は重くならない) */
+  #vignette {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background: radial-gradient(ellipse at 50% 45%, transparent 50%, rgba(0, 0, 0, 0.5) 100%);
+  }
   #controls {
     position: fixed;
     z-index: 10; /* キャンバスより上に出す(キャンバスは後から作られるので、指定しないと隠れる) */
@@ -114,6 +122,8 @@
 </style>
 </head>
 <body>
+<div id="vignette"></div>
+
 <div id="entry">
   <div class="choices">
     <button type="button" data-sound="off">
