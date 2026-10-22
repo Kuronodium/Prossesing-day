@@ -620,8 +620,7 @@ function makeKeys(length = KEY_LENGTH) {
         x: (outer.x + inner.x) / 2, // 線の真ん中(音の左右と、高さの段に使う)
         y: (outer.y + inner.y) / 2,
         weight: ring.weight || KEY_WEIGHT,
-        glow: 0,
-        last: -1,
+        last: -Infinity, // 最後に鳴った時刻(秒)
       });
     }
   }
@@ -645,7 +644,6 @@ function checkKeys(prev, now) {
       key.last = t;
       recentHits.push(t);
       const speed = dist(a.x, a.y, c.x, c.y) / L * 60; // ヒットしたときの速さ(腕の長さ / 秒)
-      key.glow = 1;
       if (typeof window.onKeyHit === 'function') window.onKeyHit(key, b, speed);
     }
   }
@@ -671,23 +669,57 @@ function segmentsCross(a, b, c, d) {
 }
 
 // 鍵盤:ふだんからはっきりした白い線。鳴ると太くなって光り、ゆっくり元に戻る
+// 鳴ってから dt 秒後の、鍵盤の光の強さ(sound.js のベルの鳴り方に合わせている)
+//   flash:鳴った瞬間の強い光。すぐに消える
+//   響き:ベルの音が消えるまで(KEY_RING 秒)、ほのかな光が残って、ゆっくり消える
+//   エコー:音のエコーと同じ間隔で、少しずつ小さくなりながら、光が脈打つ
+const KEY_RING = 5;          // 響きの光が消えるまでの時間(秒)。sound.js の NOTE_SECONDS と合わせる
+const KEY_RING_LEVEL = 0.3;  // 響きの光の明るさ(鳴った瞬間を 1 として)
+const KEY_ECHO = 0.7;        // エコーの間隔(秒)。sound.js の ECHO_SECONDS と合わせる
+const KEY_ECHO_LEVEL = 0.35; // 1回目のエコーの光の明るさ。そのあとは半分ずつになる
+// にじみの層:[太さ(線の太さに足す、ピクセル), 濃さ]。重なった明るさが、線から離れるほど指数関数的に減る
+const KEY_HALO = (() => {
+  const count = 16;
+  const widest = 40;
+  const peak = 150;   // 線のすぐそばの明るさ
+  const falloff = 7;  // 明るさが 1/e になる距離(ピクセル)
+  const widths = [...Array(count)].map((_, k) => 3 + (widest - 3) * Math.pow(k / (count - 1), 1.6));
+  const level = (w) => peak * Math.exp(-w / 2 / falloff);
+  return widths.map((w, k) => [w, level(w) - (k + 1 < count ? level(widths[k + 1]) : 0)]);
+})();
+
+function keyLight(dt) {
+  if (!(dt >= 0) || dt > KEY_RING) return { g: 0, flash: 0 };
+  const flash = Math.exp(-dt / 0.15);
+  const ring = KEY_RING_LEVEL * Math.pow(1 - dt / KEY_RING, 2);
+  let echo = 0;
+  for (let k = 1, level = KEY_ECHO_LEVEL; k * KEY_ECHO <= dt; k++, level *= 0.5) {
+    echo += level * Math.exp(-(dt - k * KEY_ECHO) / 0.2);
+  }
+  return { g: flash + ring + echo, flash };
+}
+
 function drawKeys() {
   noFill();
-  const fadeStep = pow(0.95, min(deltaTime, 100) / (1000 / 60)); // 画面の更新の速さによらず、同じ速さで光が消える
+  const t = millis() / 1000;
   for (const key of keys) {
     // ふだんから、はっきりした白い線
     strokeWeight(key.weight);
     stroke(255, 255, 255, 190);
     line(key.p1.x, key.p1.y, 0, key.p2.x, key.p2.y, 0);
-    if (key.glow > 0.01) {
-      // 鳴ったときは、線が太くなって光る
-      const g = key.glow;
-      for (const [weight, a] of [[key.weight + 3 * g, 255], [8 + 6 * g, 80], [18 + 10 * g, 28]]) {
-        stroke(255, 255, 255, a * g);
-        strokeWeight(weight);
+    const { g, flash } = keyLight(t - key.last);
+    if (g > 0.01) {
+      // 鳴ったときは、線が太くなって強く光る。太さは鳴った瞬間だけ、光は響きが続く間ほのかに残る
+      stroke(255, 255, 255, min(255, 255 * g));
+      strokeWeight(key.weight + 4 * flash);
+      line(key.p1.x, key.p1.y, 0, key.p2.x, key.p2.y, 0);
+      // まわりのにじみ:太さを少しずつ変えた薄い線を何本も重ねて、外へなめらかに暗くなるようにする
+      const spread = 1 + 0.6 * flash;
+      for (const [weight, a] of KEY_HALO) {
+        stroke(255, 255, 255, min(255, a * g));
+        strokeWeight(key.weight + weight * spread);
         line(key.p1.x, key.p1.y, 0, key.p2.x, key.p2.y, 0);
       }
-      key.glow *= fadeStep;
     }
   }
 }
@@ -705,9 +737,9 @@ function windowResized() {
       pt.y *= k;
     }
   }
-  const glow = keys.map((key) => [key.glow, key.last]);
+  const last = keys.map((key) => key.last);
   makeKeys();
-  keys.forEach((key, i) => ([key.glow, key.last] = glow[i]));
+  keys.forEach((key, i) => (key.last = last[i]));
 }
 
 function keyPressed() {
