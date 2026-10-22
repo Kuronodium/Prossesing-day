@@ -65,18 +65,19 @@
     gap: 10px;
   }
   #entry button {
-    height: 48px;
+    height: 144px;
     min-width: 0;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    font: 500 13px/1 system-ui, -apple-system, "Helvetica Neue", sans-serif;
+    gap: 12px;
+    font: 500 14px/1 system-ui, -apple-system, "Helvetica Neue", sans-serif;
     letter-spacing: 0.06em;
     color: rgba(255, 255, 255, 0.8);
     background: transparent;
     border: 1px solid rgba(255, 255, 255, 0.22);
-    border-radius: 12px;
+    border-radius: 16px;
     cursor: pointer;
     white-space: nowrap;
     -webkit-tap-highlight-color: transparent;
@@ -84,7 +85,7 @@
   #entry button.primary { background: rgba(255, 255, 255, 0.08); border-color: transparent; }
   #entry button:focus { outline: none; }
   #entry button:focus-visible { outline: 1px solid rgba(255, 255, 255, 0.5); outline-offset: 2px; }
-  #entry svg { width: 20px; height: 20px; flex: none; }
+  #entry svg { width: 28px; height: 28px; flex: none; }
   @media (prefers-reduced-motion: reduce) { #sound, #entry { transition: none; } }
 </style>
 
