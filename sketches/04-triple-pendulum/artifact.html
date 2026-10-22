@@ -1,7 +1,7 @@
 <title>3重振り子の時空図</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
-  /* 全画面の時空図だけ。下に、音のオン/オフを切り替える横長のアイコンボタンを、うっすら浮かべる */
+  /* 全画面の時空図だけ。下に、速さの切り替え(左の小さいボタン)と、音のオン/オフ(横長のアイコンボタン)を、うっすら浮かべる */
   :root {
     --bg: #0c0e16;
     --on: rgba(255, 255, 255, 0.75);       /* 音がオン:うっすら白い背景 */
@@ -13,7 +13,7 @@
   html, body { height: 100%; overflow: hidden; }
   body { background: var(--bg); }
   canvas { position: fixed; inset: 0; display: block; touch-action: none; }
-  #sound {
+  #controls {
     position: fixed;
     z-index: 10; /* キャンバスより上に出す(キャンバスは後から作られるので、指定しないと隠れる) */
     left: 0;
@@ -21,8 +21,29 @@
     bottom: calc(16px + env(safe-area-inset-bottom, 0px));
     width: calc(100% - 32px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
     max-width: 600px;
-    height: 44px;
     margin: 0 auto;
+    display: grid;
+    grid-template-columns: 76px 1fr;
+    gap: 10px;
+  }
+  #controls[hidden] { display: none; }
+  #speed {
+    height: 44px;
+    padding: 0;
+    font: 500 14px/1 system-ui, -apple-system, "Helvetica Neue", sans-serif;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.04em;
+    color: var(--off);
+    background: transparent;
+    border: 1px solid var(--off-line);
+    border-radius: 12px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #speed:focus { outline: none; }
+  #speed:focus-visible { outline: 1px solid var(--off); outline-offset: 2px; }
+  #sound {
+    height: 44px;
     padding: 0;
     display: grid;
     place-items: center;
@@ -41,7 +62,6 @@
   #sound .on { display: none; }
   #sound[aria-pressed="true"] .on { display: block; }
   #sound[aria-pressed="true"] .off { display: none; }
-  #sound[hidden] { display: none; }
   /* 入り口:画面の下で、左右どちらかを選んで始める(左 = ミュート、右 = 音あり) */
   #entry {
     position: fixed;
@@ -102,13 +122,16 @@
   </div>
 </div>
 
-<button type="button" id="sound" aria-pressed="false" aria-label="音を出す" hidden>
+<div id="controls" hidden>
+<button type="button" id="speed" aria-label="振り子の速さ(押すと切り替わる)">×1</button>
+<button type="button" id="sound" aria-pressed="false" aria-label="音を出す">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <path d="M4 9.5h3.2L12 5.5v13l-4.8-4H4z" fill="currentColor" fill-opacity="0.15"></path>
     <g class="off"><path d="M16 9.5l5 5M21 9.5l-5 5"></path></g>
     <g class="on"><path d="M15.5 9a4.2 4.2 0 0 1 0 6"></path><path d="M18 6.5a7.8 7.8 0 0 1 0 11"></path></g>
   </svg>
 </button>
+</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.11.1/p5.min.js"></script>
 <script src="sketch.js"></script>
@@ -139,11 +162,19 @@
       restart();
       running = true;
       loop();
-      soundBtn.hidden = false;
+      document.getElementById('controls').hidden = false;
       entry.classList.add('leaving');
       setTimeout(() => entry.remove(), 700);
     });
   }
 
   soundBtn.addEventListener('click', () => setSound(!soundIsOn()));
+
+  // 速さ:押すたびに ×0.5 → ×1 → ×2 と切り替わる(振り子の時間だけが変わり、カメラはそのまま)
+  const SPEEDS = [0.5, 1, 2];
+  const speedBtn = document.getElementById('speed');
+  speedBtn.addEventListener('click', () => {
+    timeScale = SPEEDS[(SPEEDS.indexOf(timeScale) + 1) % SPEEDS.length];
+    speedBtn.textContent = '×' + timeScale;
+  });
 </script>

@@ -68,6 +68,8 @@ const TRAIL_BRIGHTNESS = [0.6, 0.65, 0.85, 1]; // 軌跡の明るさ。内側ほ
 
 let pend;       // 振り子
 let running = true; // false の間は時間を止めて、振り子をその場で描くだけにする(入り口の画面用)
+let timeScale = 1;   // 振り子の時間の進む速さ(画面のボタンで 0.5 / 1 / 2 倍に切り替える)
+let stepClock = 0;   // まだ進めていない時間(秒)。1/60 秒たまるごとに、振り子を1歩進める
 let keys = [];  // 鍵盤
 let recentHits = []; // 最近鳴った時刻(1秒に鳴らす数を抑えるため)
 let pivot;      // 中心のずれ(腕の長さを 1 とした位置と速度)
@@ -97,6 +99,7 @@ function restart() {
   pivot = { x: 0, y: 0, vx: 0, vy: 0 };
   drag = null;
   recentHits = [];
+  stepClock = 0;
   viewIndex = 0; // やり直したら、また正面から、静止したカメラで始める
   viewStart = millis() / 1000;
   camStart = viewStart;
@@ -106,9 +109,17 @@ function restart() {
 
 function draw() {
   background(BG);
-  updateCamera();
+  // 実際に経過した時間で進める(画面の更新が 60 回/秒でも 144 回/秒でも、同じ速さで動くように)
+  const elapsed = min(deltaTime, 100) / 1000;
+  updateCamera(elapsed);
 
-  if (running) step();
+  if (running) {
+    stepClock += elapsed * timeScale;
+    for (let i = 0; i < 8 && stepClock >= 1 / 60; i++) {
+      step();
+      stepClock -= 1 / 60;
+    }
+  }
 
   // 光の部分:重なるほど明るくなる「加算合成」で、前後関係は気にせず描く
   const gl = drawingContext;
@@ -315,7 +326,7 @@ function handheld(t) {
   };
 }
 
-function updateCamera() {
+function updateCamera(elapsed = 1 / 60) {
   const t = millis() / 1000;
   if (t - viewStart > VIEW_SECONDS) nextView();
   const goal = camGoal(t);
@@ -327,8 +338,8 @@ function updateCamera() {
       cam.vel[k] = 0;
     }
   }
-  // ばねで目標へ引き寄せる(1フレーム = 1/60 秒)
-  const dt = 1 / 60;
+  // ばねで目標へ引き寄せる(実際に経過した時間だけ進める)
+  const dt = elapsed;
   for (const k of CAM_KEYS) {
     const a = CAM_SPRING * (goal[k] - cam[k]) - CAM_DAMP * cam.vel[k];
     cam.vel[k] += a * dt;
