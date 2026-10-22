@@ -8,12 +8,12 @@ const G = 9.81;             // 重力
 const SPEED = 0.56;         // 時間の進む速さ(1 で現実と同じ)。画面の ×1 はこの速さ
 const SUBSTEPS = 10;        // 1フレームの計算を何回に分けるか(多いほど正確)
 const DT = SPEED / 60 / SUBSTEPS;
-const HISTORY = 800;        // 何フレーム分の過去を残すか(60で1秒)。奥行きの長さは DEPTH のまま、長く残すほど奥へ流れる速さが遅くなり、線が密になる
+const HISTORY = 1200;       // 何フレーム分の過去を残すか(60で1秒、1200 で 20 秒)。奥行きの長さは DEPTH のまま、長く残すほど奥へ流れる速さが遅くなり、線が密になる
 const DEPTH = 30;           // 時間の奥行きの長さ(腕の長さの何倍か)
 const TRAIL_FLOOR = 0.25;   // 古い軌跡も、この明るさまでは残す(最後の 1 割で消える)
 const FADE_SPEED = 6;       // 最初にどれだけ急に暗くなるか(大きいほど、手前の光がすぐ落ち着く)
-const RECENT = 1 / 3;       // 新しい方からこの割合(約 3 秒分)は、すべての点を使い、にじみも付けて描く
-const THIN_STEP = 1;        // それより古い部分は、この数ごとに 1 点だけ使って描く(2 以上にすると軽くなるが、奥の線が折れ線に見える)
+const RECENT = 1 / 3;       // 新しい方からこの割合(約 7 秒分)は、すべての点を使い、にじみも付けて描く
+const THIN_STEP = 2;        // それより古い部分は、この数ごとに 1 点だけ使って描く(軽くするため。大きくしすぎると、奥の線が折れ線に見える)
 const EXPAND = 6.5;         // 一番古い過去を、どれだけ広げるか(0 で広げない。6.5 なら 7.5 倍)
 const EXPAND_CURVE = 1;     // 広がり方(1 でまっすぐな円錐、大きいほど奥で急に開く)
 // 始まり方:毎回同じ。真上から、3本の腕をほんの少しずつずらし、そろって回し始める
@@ -72,7 +72,6 @@ let timeScale = 1;   // 振り子の時間の進む速さ(画面のボタンで 
 let stepClock = 0;   // まだ進めていない時間(秒)。1/60 秒たまるごとに、振り子を1歩進める
 let keys = [];  // 鍵盤
 let recentHits = []; // 最近鳴った時刻(1秒に鳴らす数を抑えるため)
-let keyMarks = [];   // 鍵盤が鳴った瞬間の記録(どの鍵盤が、何フレーム目に)。光の線として時間の軸に残す
 let pivot;      // 中心のずれ(腕の長さを 1 とした位置と速度)
 let drag;       // ドラッグ中なら、始めた時の指と中心の位置。していなければ null
 let L;          // 腕1本の長さ(画面上のピクセル)
@@ -100,7 +99,6 @@ function restart() {
   pivot = { x: 0, y: 0, vx: 0, vy: 0 };
   drag = null;
   recentHits = [];
-  keyMarks = [];
   stepClock = 0;
   viewIndex = 0; // やり直したら、また正面から、静止したカメラで始める
   viewStart = millis() / 1000;
@@ -509,7 +507,6 @@ function checkKeys(prev, now) {
       recentHits.push(t);
       const speed = dist(a.x, a.y, c.x, c.y) / L * 60; // ヒットしたときの速さ(腕の長さ / 秒)
       key.glow = 1;
-      keyMarks.push({ key, frame: frameIndex });
       if (typeof window.onKeyHit === 'function') window.onKeyHit(key, b, speed);
     }
   }
@@ -526,24 +523,8 @@ function segmentsCross(a, b, c, d) {
 }
 
 // 鍵盤:ふだんは薄い白い線、ヒットすると白く光ってゆっくり消える
-// 鳴った瞬間の光った線は、光の軌跡と同じように時間の軸に残り、奥へ流れながら広がって薄れていく
 function drawKeys() {
   noFill();
-  keyMarks = keyMarks.filter((m) => frameIndex - m.frame < HISTORY);
-  const cy = -L * 0.5; // 広げる中心(支点の元の位置)
-  for (const m of keyMarks) {
-    const age = (frameIndex - m.frame) / HISTORY;
-    const fade = pow(fadeAt(age), 0.7); // 軌跡より少しゆっくり薄れる
-    const sc = spread(age);
-    const z = -(frameIndex - m.frame) * zStep;
-    const a = m.key.p1;
-    const b = m.key.p2;
-    for (const [weight, alpha] of [[2.5, 255], [7, 80], [14, 25]]) { // 鳴った瞬間と同じ光り方
-      stroke(255, 255, 255, alpha * fade);
-      strokeWeight(weight);
-      line(a.x * sc, cy + (a.y - cy) * sc, z, b.x * sc, cy + (b.y - cy) * sc, z);
-    }
-  }
   for (const key of keys) {
     strokeWeight(1.5);
     stroke(255, 255, 255, 70);
