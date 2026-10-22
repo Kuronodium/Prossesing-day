@@ -20,7 +20,7 @@ const EXPAND_CURVE = 1;     // 広がり方(1 でまっすぐな円錐、大き�
 // 振り子全体が1本の棒のように回って円を描き、約 1.2 秒で崩れてカオスになる
 // (真上から放すと、円が続く時間はずらし幅ではなく回す速さでほぼ決まる:1.8〜2.0 で約 1.2 秒、2.2 で約 1.6 秒、2.5 で約 2.3 秒)
 const START_SPIN = 1.9;     // 最初に回す速さ(ラジアン / 秒)。1.9 で約 1.2 秒
-const START_NUDGE = 0.01;   // 腕どうしのずらし幅(ラジアン)
+const START_NUDGE = 0;      // 腕どうしのずらし幅(ラジアン)。0 = 完全に真上。ずらさなくても、重力と遠心力の差で自然に崩れる
 const START_DIR = -1;       // 回す向き(-1 = 時計回り、1 = 反時計回り)。ずらし方も一緒に反転して、鏡に映した同じ動きにする
 
 // 中心(支点)を動かすばね。強さが大きいほど速く戻り、減衰が大きいほど弾まずに止まる
@@ -45,6 +45,7 @@ const VIEW_SECONDS = 10;    // 1つの視点にとどまる時間
 const CAM_SPRING = 1.4;     // カメラを次の視点へ引き寄せるばねの強さ(大きいほど早く着く)
 const CAM_DAMP = 1.9;       // そのばねの減衰(小さいほど、行き過ぎてから戻る)
 const WANDER = 1;           // カメラがさまよう大きさ(0 で決めポイントに止まる)
+const CAM_SETTLE = 4;       // 始まりは静止した正面から、この秒数かけて手持ちの動きになっていく
 
 // 鍵盤:支点のまわりに、時計の目盛りのように並べた放射状の短い線。関節か先端が線を横切った瞬間、その音が鳴る
 // r = 線の外側の端の、支点からの距離(腕の長さの何倍か)、n = 並べる数、start = 1本目の向き(0 = 真下、PI = 真上)
@@ -62,6 +63,7 @@ const TRAIL_COLORS = ['#f0505e', '#b48cff', '#4a8cff', '#ffc94d'];
 const TRAIL_BRIGHTNESS = [0.6, 0.65, 0.85, 1]; // 軌跡の明るさ。内側ほど控えめにして、注目を先端に集める
 
 let pend;       // 振り子
+let running = true; // false の間は時間を止めて、振り子をその場で描くだけにする(入り口の画面用)
 let keys = [];  // 鍵盤
 let recentHits = []; // 最近鳴った時刻(1秒に鳴らす数を抑えるため)
 let pivot;      // 中心のずれ(腕の長さを 1 とした位置と速度)
@@ -72,6 +74,7 @@ let frameIndex; // 始まってからのフレーム数
 let viewIndex = 0;   // いまの視点
 let viewStart = 0;   // いまの視点に移った時刻(秒)
 let cam = null;      // いまのカメラの状態と速さ(重さのあるカメラとして動かす)
+let camStart = 0;    // カメラが動き始めた時刻(秒)
 
 function setup() {
   pixelDensity(min(2, displayDensity()));
@@ -90,8 +93,10 @@ function restart() {
   pivot = { x: 0, y: 0, vx: 0, vy: 0 };
   drag = null;
   recentHits = [];
-  viewIndex = 0; // やり直したら、また正面から
+  viewIndex = 0; // やり直したら、また正面から、静止したカメラで始める
   viewStart = millis() / 1000;
+  camStart = viewStart;
+  cam = null;
   makeKeys();
 }
 
@@ -99,18 +104,7 @@ function draw() {
   background(BG);
   updateCamera();
 
-  const target = dragTarget();
-  for (let s = 0; s < SUBSTEPS; s++) {
-    const a = movePivot(target);
-    rk4(pend, a.x, a.y);
-  }
-  settle(pend);
-  const prevPts = pend.trail[pend.trail.length - 1];
-  const nowPts = points(pend.th);
-  pend.trail.push(nowPts);
-  if (prevPts) checkKeys(prevPts, nowPts);
-  if (pend.trail.length > HISTORY) pend.trail.shift();
-  frameIndex++;
+  if (running) step();
 
   // 光の部分:重なるほど明るくなる「加算合成」で、前後関係は気にせず描く
   const gl = drawingContext;
@@ -123,6 +117,22 @@ function draw() {
   gl.enable(gl.DEPTH_TEST);
 
   drawPendulum();
+}
+
+// 時間を1フレーム進める:振り子を動かし、軌跡を残し、鍵盤に当たったかを調べる
+function step() {
+  const target = dragTarget();
+  for (let s = 0; s < SUBSTEPS; s++) {
+    const a = movePivot(target);
+    rk4(pend, a.x, a.y);
+  }
+  settle(pend);
+  const prevPts = pend.trail[pend.trail.length - 1];
+  const nowPts = points(pend.th);
+  pend.trail.push(nowPts);
+  if (prevPts) checkKeys(prevPts, nowPts);
+  if (pend.trail.length > HISTORY) pend.trail.shift();
+  frameIndex++;
 }
 
 // ---- 物理:3重振り子の運動方程式(腕の長さ1、おもりの重さ1)----
@@ -264,26 +274,34 @@ function points(th) {
 const CAM_KEYS = ['yaw', 'pitch', 'dist', 'roll'];
 
 // カメラが行きたい場所
+// いまの揺れの大きさ。始まった直後は 0(静止)で、CAM_SETTLE 秒かけて WANDER まで大きくなる
+function wanderAt(t) {
+  const k = constrain((t - camStart) / CAM_SETTLE, 0, 1);
+  return WANDER * k * k * (3 - 2 * k);
+}
+
 function camGoal(t) {
   const v = VIEWS[viewIndex];
+  const w = wanderAt(t);
   // n(速さ, 番号):-1 〜 1 の、なめらかで不規則な値
   const n = (speed, k) => (noise(t * speed, k * 17.3) - 0.5) * 2;
   return {
-    yaw: v.yaw + WANDER * 0.22 * n(0.07, 1),
-    pitch: v.pitch + WANDER * 0.09 * n(0.06, 3),
-    dist: v.dist * (1 + WANDER * 0.14 * n(0.05, 5)) * (drag ? 0.85 : 1), // 干渉している間は少し寄る
-    roll: WANDER * 0.03 * n(0.09, 7), // ごくわずかな傾き
+    yaw: v.yaw + w * 0.22 * n(0.07, 1),
+    pitch: v.pitch + w * 0.09 * n(0.06, 3),
+    dist: v.dist * (1 + w * 0.14 * n(0.05, 5)) * (drag ? 0.85 : 1), // 干渉している間は少し寄る
+    roll: w * 0.03 * n(0.09, 7), // ごくわずかな傾き
   };
 }
 
 // 手持ちの細かい揺れ(呼吸のような、ゆっくりした小さな揺れ)
 function handheld(t) {
   const n = (speed, k) => (noise(t * speed, k * 31.7) - 0.5) * 2;
+  const w = wanderAt(t);
   return {
-    yaw: WANDER * 0.035 * n(0.45, 1),
-    pitch: WANDER * 0.02 * n(0.5, 2),
-    dist: 1 + WANDER * 0.025 * n(0.35, 3),
-    roll: WANDER * 0.01 * n(0.6, 4),
+    yaw: w * 0.035 * n(0.45, 1),
+    pitch: w * 0.02 * n(0.5, 2),
+    dist: 1 + w * 0.025 * n(0.35, 3),
+    roll: w * 0.01 * n(0.6, 4),
   };
 }
 

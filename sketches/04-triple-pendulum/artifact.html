@@ -128,7 +128,8 @@
     if (on) setTimeout(() => showSound(soundIsOn()), 800);
   }
 
-  // 入り口で選ぶまでは、振り子を止めておく(p5 が setup を終えた後に止める)
+  // 入り口で選ぶまでは、振り子を真上で止めておく
+  running = false;
   window.addEventListener('load', () => noLoop());
 
   // 入り口:選んだら、音の状態を決めて、最初から再生を始める
@@ -136,6 +137,7 @@
     btn.addEventListener('click', () => {
       setSound(btn.dataset.sound === 'on'); // ボタンを押した瞬間なので、確実に音を始められる
       restart();
+      running = true;
       loop();
       soundBtn.hidden = false;
       entry.classList.add('leaving');
