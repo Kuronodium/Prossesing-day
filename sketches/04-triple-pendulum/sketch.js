@@ -10,6 +10,8 @@ const SUBSTEPS = 10;        // 1フレームの計算を何回に分けるか(�
 const DT = SPEED / 60 / SUBSTEPS;
 const HISTORY = 900;        // 何フレーム分の過去を残すか(60で1秒)
 const DEPTH = 30;           // 時間の奥行きの長さ(腕の長さの何倍か)
+const EXPAND = 5;           // 一番古い過去を、どれだけ広げるか(0 で広げない。5 なら 6 倍)
+const EXPAND_CURVE = 1;     // 広がり方(1 でまっすぐな円錐、大きいほど奥で急に開く)
 const START_SPIN = 4;       // 最初の勢いの最大値(1秒あたりの回転角、ラジアン)
 
 // 中心(支点)を動かすばね。強さが大きいほど速く戻り、減衰が大きいほど弾まずに止まる
@@ -308,7 +310,12 @@ function nextView() {
 
 // ---- 描画 ----
 
-// i 番目の点(0 = 中心、N = 先端)の光の軌跡。新しいほど手前で明るく、古いほど奥で薄く消えていく
+// 過去を広げる倍率。age は 0(現在)〜 1(一番古い過去)。現在を頂点にした円錐のように広がる
+function spread(age) {
+  return 1 + EXPAND * pow(age, EXPAND_CURVE);
+}
+
+// i 番目の点(0 = 中心、N = 先端)の光の軌跡。新しいほど手前で明るく、古いほど奥で広がって薄く消えていく
 function drawTrail(i) {
   noFill();
   const c = color(TRAIL_COLORS[i]);
@@ -323,7 +330,9 @@ function drawTrail(i) {
       c.setAlpha(255 * fade * strength);
       stroke(c);
       const pt = trail[k][i];
-      vertex(pt.x, pt.y, -(n - 1 - k) * zStep);
+      const sc = spread((n - 1 - k) / HISTORY);
+      const cy = -L * 0.5; // 広げる中心(支点の元の位置)
+      vertex(pt.x * sc, cy + (pt.y - cy) * sc, -(n - 1 - k) * zStep);
     }
     endShape();
   }
@@ -370,7 +379,8 @@ function drawTimeFrames() {
     push();
     translate(0, -L * 0.5, z);
     rectMode(CENTER);
-    rect(0, 0, r * 2, r * 2);
+    const sc = spread((frameIndex - f) / HISTORY);
+    rect(0, 0, r * 2 * sc, r * 2 * sc);
     pop();
   }
 }
