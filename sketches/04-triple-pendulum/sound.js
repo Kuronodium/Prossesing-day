@@ -9,6 +9,8 @@
 // 鍵盤の高さに合わせて、低い方から割り当てる(sketch.js の KEY_NOTES と長さを合わせる)
 const SCALE = [196, 220, 261.63, 293.66, 329.63, 392, 440, 523.25];
 const NOTE_SECONDS = 5;     // 1音が消えるまでの時間
+// ベルの音色:[基本の音の何倍の高さか, 音量, 消えるまでの時間(NOTE_SECONDS に対する割合)]
+const BELL_PARTIALS = [[1, 1, 1], [2, 0.85, 0.75], [3, 0.6, 0.55], [4, 0.45, 0.4], [6, 0.2, 0.25]];
 const NOTE_LEVEL = 0.16;    // 1音の音量(当たった強さに関係なく一定)
 const MASTER = 1;           // 全体の音量
 const ECHO_SECONDS = 0.7;   // エコーの間隔
@@ -50,8 +52,10 @@ function bell(freq, loud, pan) {
   const out = ctx.createStereoPanner();
   out.pan.value = pan;
   out.connect(bus);
-  // 1 オクターブ上の倍音を少し強めにしている(スマホの小さなスピーカーは低い音をほとんど鳴らせないため)
-  for (const [ratio, level, decay] of [[1, 1, 1], [2.0, 0.35, 0.5], [3.01, 0.1, 0.25]]) {
+  // 倍音を重ねて、スマホの小さなスピーカーでも聞こえるようにしている
+  // (スマホは 500Hz より低い音をほとんど鳴らせないが、2〜6 倍の倍音は鳴らせる。耳は倍音から元の低い音を感じ取れる)
+  // どれも基本の音の整数倍なので、鍵盤どうしが重なっても濁らない。高い倍音ほど早く消え、鉄琴のような音になる
+  for (const [ratio, level, decay] of BELL_PARTIALS) {
     const osc = ctx.createOscillator();
     osc.type = 'sine';
     osc.frequency.value = freq * ratio;
