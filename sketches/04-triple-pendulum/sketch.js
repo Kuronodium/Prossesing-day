@@ -8,11 +8,11 @@ const G = 9.81;             // 重力
 const SPEED = 1.6;          // 時間の進む速さ(1 で現実と同じ)
 const SUBSTEPS = 10;        // 1フレームの計算を何回に分けるか(多いほど正確)
 const DT = SPEED / 60 / SUBSTEPS;
-const HISTORY = 1800;       // 何フレーム分の過去を残すか(60で1秒)
-const DEPTH = 40;           // 時間の奥行きの長さ(腕の長さの何倍か)
-const TRAIL_FLOOR = 0.12;   // 古い軌跡も、この明るさまでは残す(最後の 1 割で消える)
-const RECENT = 1 / 3;       // 新しい方からこの割合(10 秒分)は、すべての点を使い、にじみも付けて描く
-const THIN_STEP = 3;        // それより古い部分は、この数ごとに 1 点だけ使って描く(軽くするため)
+const HISTORY = 900;        // 何フレーム分の過去を残すか(60で1秒)
+const DEPTH = 30;           // 時間の奥行きの長さ(腕の長さの何倍か)
+const TRAIL_FLOOR = 0.25;   // 古い軌跡も、この明るさまでは残す(最後の 1 割で消える)
+const RECENT = 1 / 3;       // 新しい方からこの割合(5 秒分)は、すべての点を使い、にじみも付けて描く
+const THIN_STEP = 1;        // それより古い部分は、この数ごとに 1 点だけ使って描く(2 以上にすると軽くなるが、奥の線が折れ線に見える)
 const EXPAND = 5;           // 一番古い過去を、どれだけ広げるか(0 で広げない。5 なら 6 倍)
 const EXPAND_CURVE = 1;     // 広がり方(1 でまっすぐな円錐、大きいほど奥で急に開く)
 // 始まり方:振り子全体が1本の棒のように回って円を描き、数秒でカオスへ崩れていく
@@ -391,9 +391,11 @@ function drawTrail(i) {
     strokeWeight(weight);
     beginShape();
     for (let k = from; k < n; k += k < recent ? THIN_STEP : 1) {
-      // 新しいほど明るく、古くなると TRAIL_FLOOR の明るさでうっすら残り、一番古い 1 割で消えていく
+      // 明るさ:新しい方はゆっくり下がり始め、なめらかに TRAIL_FLOOR へ近づく(なだらかな S 字)
+      // 一番古い 1 割だけ、最後に消えていく
       const age = (n - 1 - k) / HISTORY;
-      const fade = (TRAIL_FLOOR + (1 - TRAIL_FLOOR) * pow(1 - age, 2.2)) * min(1, (1 - age) / 0.1);
+      const ease = 1 - age * age * (3 - 2 * age);
+      const fade = (TRAIL_FLOOR + (1 - TRAIL_FLOOR) * ease) * min(1, (1 - age) / 0.1);
       c.setAlpha(255 * fade * strength);
       stroke(c);
       const pt = trail[k][i];
