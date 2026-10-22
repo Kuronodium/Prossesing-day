@@ -1,15 +1,17 @@
 // 3重振り子の音:sketch.js の振り子(pend)を読んで、音を鳴らす
-//   ・腕1本につき1つの音。根元は低く、先端は高く(濁らない和音)
-//   ・腕が速く振れると、その音がふくらんで明るくなる。ゆっくりなら、ほとんど聞こえない
+//   ・腕1本につき1つの音が、常に鳴り続ける。根元は低く、先端は高く
+//   ・腕が速くなるほど、五音音階を1段ずつ上がる(どの音が重なっても濁らない)。速いほど少し大きく明るくもなる
 //   ・ふくらんだ音は、エコーと残響で尾を引いて消えていく(画面の、薄れていく光の軌跡と同じ)
 //   ・音は、その腕の先の点が左にあれば左から、右にあれば右から聞こえる
 // ブラウザは、画面を一度タップ(クリック)するまで音を出せない。toggleSound() で鳴らす/止める。S キーでも切り替え
 
-// スマホのスピーカーは低い音をほとんど鳴らせないので、220Hz 以上にしている
-const VOICE_FREQS = [220, 329.63, 493.88]; // ラ(A3)、ミ(E4)、シ(B4):根元 → 先端
+// 五音音階(ラ・ド・レ・ミ・ソ)。スマホのスピーカーは低い音をほとんど鳴らせないので、220Hz 以上にしている
+const SCALE = [220, 261.63, 293.66, 329.63, 392, 440, 523.25, 587.33, 659.26, 783.99, 880, 1046.5];
+const START_STEP = [0, 2, 4]; // 止まっているときの段:根元 → 先端
+const STEPS = 5;              // 一番速いとき、何段上がるか
 const FAST = 9;            // この角速度(ラジアン/秒)で、音が一番大きくなる
-const VOICE_MAX = 0.16;    // 1つの音の最大音量
-const VOICE_MIN = 0.02;    // 一番静かなときの音量(小さく鳴り続ける)
+const VOICE_MAX = 0.12;    // 1つの音の最大音量(一番速いとき)
+const VOICE_MIN = 0.05;    // 1つの音の最小音量(止まっているとき)
 const MASTER = 0.7;        // 全体の音量
 const ECHO_SECONDS = 0.55; // エコーの間隔
 const ECHO_FEEDBACK = 0.42;// エコーが次に残る割合(大きいほど長く続く)
@@ -107,7 +109,7 @@ function buildAudio() {
   echoOut.connect(reverb);
 
   // 腕ごとの音:少しずらした2つの波を重ねて、やわらかく揺らぐ音にする
-  const voices = VOICE_FREQS.map((f) => {
+  const voices = START_STEP.map((_, i) => {
     const tone = ctx.createBiquadFilter();
     tone.type = 'lowpass';
     tone.frequency.value = 900;
@@ -115,16 +117,18 @@ function buildAudio() {
     const gain = ctx.createGain();
     gain.gain.value = 0;
     const pan = ctx.createStereoPanner();
+    const oscs = [];
     for (const [type, detune] of [['triangle', -4], ['triangle', 4]]) {
       const osc = ctx.createOscillator();
       osc.type = type;
-      osc.frequency.value = f;
+      osc.frequency.value = SCALE[START_STEP[i]];
       osc.detune.value = detune;
       osc.connect(tone);
       osc.start();
+      oscs.push(osc);
     }
     tone.connect(gain).connect(pan).connect(bus);
-    return { tone, gain, pan };
+    return { tone, gain, pan, oscs, step: START_STEP[i] };
   });
 
   return { ctx, bus, voices };
@@ -150,7 +154,13 @@ function updateSound() {
   const reach = L * N;
   audio.voices.forEach((v, i) => {
     const s = Math.min(1, Math.abs(pend.w[i]) / FAST); // 腕の速さ(0 〜 1)
-    const loud = VOICE_MIN + (VOICE_MAX - VOICE_MIN) * s * s; // 速いときだけ、ぐっとふくらむ
+    // 速さに合わせて音階の段を決める。境目でパタパタしないよう、0.7 段以上ずれたときだけ移る
+    const want = START_STEP[i] + s * STEPS;
+    if (Math.abs(want - v.step) > 0.7) {
+      v.step = Math.round(want);
+      for (const osc of v.oscs) osc.frequency.setTargetAtTime(SCALE[v.step], now, 0.03);
+    }
+    const loud = VOICE_MIN + (VOICE_MAX - VOICE_MIN) * s;
     v.gain.gain.setTargetAtTime(loud, now, 0.25); // 0.25 秒かけて、ふわっと変わる
     v.tone.frequency.setTargetAtTime(900 + 3000 * s, now, 0.12); // 速いほど明るい音
     const x = (pts[i + 1].x - pts[0].x) / reach; // 腕の先の点の、左右の位置(-1 〜 1)
