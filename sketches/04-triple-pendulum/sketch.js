@@ -71,7 +71,7 @@ const KEY_MAX_RATE = 3;     // 全体で1秒に鳴らす最大の数
 
 const BG = [3, 3, 7];
 // 軌跡の色:中心、接続部1、接続部2、先端 の順
-const TRAIL_COLORS = ['#f0505e', '#b48cff', '#4a8cff', '#ffc94d'];
+const TRAIL_COLORS = ['#f0505e', '#bc98ff', '#5c98ff', '#ffce5f'];
 const TRAIL_BRIGHTNESS = [0.6, 0.65, 0.85, 1]; // 軌跡の明るさ。内側ほど控えめにして、注目を先端に集める
 
 let pend;       // 振り子
