@@ -47,6 +47,9 @@ const VIEWS = [
   { name: '斜め左', yaw: -0.5, pitch: 0.18, dist: 15 },
   { name: '斜め上', yaw: 0.25, pitch: 0.5, dist: 14 },
 ];
+// 縦長の画面で、どれだけ遠ざかるか(1 = 振り子の動ける範囲がすべて入る、0 = 横長と同じ近さ)
+// 小さいほど寄って迫力が出る。そのぶん外側の軌跡は画面からはみ出す
+const PORTRAIT_FIT = 0.5;
 const LIFT = 0.07;          // 絵全体を持ち上げる量(画面の高さに対する割合)
 const VIEW_SECONDS = 10;    // 1つの視点にとどまる時間
 const CAM_SPRING = 1.4;     // カメラを次の視点へ引き寄せるばねの強さ(大きいほど早く着く)
@@ -369,7 +372,7 @@ function updateCamera(elapsed = 1 / 60) {
   const pitch = cam.pitch + h.pitch;
   const roll = cam.roll + h.roll;
   // 縦長の画面では、遠くから見ないとはみ出すので距離を伸ばす
-  const fit = max(1, 0.85 / (width / height));
+  const fit = pow(max(1, 0.85 / (width / height)), PORTRAIT_FIT);
   const d = cam.dist * h.dist * L * fit;
   const tx = 0;
   const ty = -L * 0.5; // 振り子の原点
