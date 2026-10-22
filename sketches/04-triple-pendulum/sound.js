@@ -5,10 +5,11 @@
 //   ・音は、その腕の先の点が左にあれば左から、右にあれば右から聞こえる
 // ブラウザは、画面を一度タップ(クリック)するまで音を出せない。toggleSound() で鳴らす/止める。S キーでも切り替え
 
-const VOICE_FREQS = [110, 164.81, 246.94]; // ラ(A2)、ミ(E3)、シ(B3):根元 → 先端
+// スマホのスピーカーは低い音をほとんど鳴らせないので、220Hz 以上にしている
+const VOICE_FREQS = [220, 329.63, 493.88]; // ラ(A3)、ミ(E4)、シ(B4):根元 → 先端
 const FAST = 9;            // この角速度(ラジアン/秒)で、音が一番大きくなる
 const VOICE_MAX = 0.16;    // 1つの音の最大音量
-const VOICE_MIN = 0.004;   // 一番静かなときの音量(ほぼ聞こえない)
+const VOICE_MIN = 0.02;    // 一番静かなときの音量(小さく鳴り続ける)
 const MASTER = 0.7;        // 全体の音量
 const ECHO_SECONDS = 0.55; // エコーの間隔
 const ECHO_FEEDBACK = 0.42;// エコーが次に残る割合(大きいほど長く続く)
@@ -16,9 +17,13 @@ const REVERB_SECONDS = 4;  // 残響の長さ
 
 let audio = null; // 音の仕組み一式。まだ作っていなければ null
 
+// 鳴らす/止める。鳴っていれば true を返す
 function toggleSound() {
   if (!audio) {
+    unlockIOS();
     audio = buildAudio();
+    audio.ctx.resume(); // ブラウザによっては、作っただけでは一時停止のままになる
+    chime();
     updateSound();
     return true;
   }
@@ -32,6 +37,38 @@ function soundIsOn() {
   return !!audio && audio.ctx.state === 'running';
 }
 
+// iPhone のマナーモードでも音が出るようにする
+function unlockIOS() {
+  // 新しい iOS:音の種類を「再生」にすると、マナーモードでも鳴る
+  try {
+    if (navigator.audioSession) navigator.audioSession.type = 'playback';
+  } catch (e) {}
+  // 古い iOS:無音の <audio> を流しておくと、同じ効果がある
+  try {
+    const silent = new Audio('data:audio/wav;base64,UklGRkQDAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YSADAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==');
+    silent.loop = true;
+    silent.play().catch(() => {});
+  } catch (e) {}
+}
+
+// 鳴り始めの合図:小さなベルを1回(音が出る状態か、すぐわかるように)
+function chime() {
+  const { ctx, bus } = audio;
+  const t = ctx.currentTime + 0.05;
+  for (const [f, v] of [[987.77, 0.12], [1975.5, 0.04]]) {
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = f;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(v, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 2.5);
+    osc.connect(g).connect(bus);
+    osc.start(t);
+    osc.stop(t + 2.6);
+  }
+}
+
 function buildAudio() {
   const ctx = new (window.AudioContext || window.webkitAudioContext)();
 
@@ -42,8 +79,7 @@ function buildAudio() {
   limiter.attack.value = 0.01;
   limiter.release.value = 0.3;
   const master = ctx.createGain();
-  master.gain.value = 0;
-  master.gain.setTargetAtTime(MASTER, ctx.currentTime, 0.8); // ふわっと鳴り始める
+  master.gain.value = MASTER;
   limiter.connect(master).connect(ctx.destination);
 
   // 響き:そのまま(dry)+ エコー + 残響 を混ぜる
@@ -74,12 +110,12 @@ function buildAudio() {
   const voices = VOICE_FREQS.map((f) => {
     const tone = ctx.createBiquadFilter();
     tone.type = 'lowpass';
-    tone.frequency.value = 400;
+    tone.frequency.value = 900;
     tone.Q.value = 0.7;
     const gain = ctx.createGain();
     gain.gain.value = 0;
     const pan = ctx.createStereoPanner();
-    for (const [type, detune] of [['sine', -4], ['triangle', 4]]) {
+    for (const [type, detune] of [['triangle', -4], ['triangle', 4]]) {
       const osc = ctx.createOscillator();
       osc.type = type;
       osc.frequency.value = f;
@@ -91,7 +127,7 @@ function buildAudio() {
     return { tone, gain, pan };
   });
 
-  return { ctx, voices };
+  return { ctx, bus, voices };
 }
 
 // 残響の「響き方」を、だんだん小さくなる雑音で作る
@@ -115,8 +151,8 @@ function updateSound() {
   audio.voices.forEach((v, i) => {
     const s = Math.min(1, Math.abs(pend.w[i]) / FAST); // 腕の速さ(0 〜 1)
     const loud = VOICE_MIN + (VOICE_MAX - VOICE_MIN) * s * s; // 速いときだけ、ぐっとふくらむ
-    v.gain.gain.setTargetAtTime(loud, now, 0.12);
-    v.tone.frequency.setTargetAtTime(300 + 2600 * s, now, 0.12); // 速いほど明るい音
+    v.gain.gain.setTargetAtTime(loud, now, 0.25); // 0.25 秒かけて、ふわっと変わる
+    v.tone.frequency.setTargetAtTime(900 + 3000 * s, now, 0.12); // 速いほど明るい音
     const x = (pts[i + 1].x - pts[0].x) / reach; // 腕の先の点の、左右の位置(-1 〜 1)
     v.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, x)), now, 0.08);
   });
