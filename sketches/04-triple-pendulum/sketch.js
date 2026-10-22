@@ -57,8 +57,12 @@ const CAM_SETTLE = 4;       // 始まりは静止した正面から、この秒�
 // 鍵盤:支点のまわりに、時計の目盛りのように並べた放射状の短い線。関節か先端が線を横切った瞬間、その音が鳴る
 // r = 線の外側の端の、支点からの距離(腕の長さの何倍か)、n = 並べる数、start = 1本目の向き(0 = 真下、PI = 真上)
 // 音の高さは画面上の高さで決まる(上にあるほど高い音)
-const KEY_RINGS = [{ r: 2.08, n: 12, start: Math.PI }]; // 時計の文字盤のように 12 本
-const KEY_LENGTH = 0.18;    // 線の長さ(腕の長さの何倍か)。内側の端は 1.9。カオスの状態で、平均 1 秒に 0.7 回ほど鳴る
+// 時計の文字盤のように 12 本。12・3・6・9 時の 4 本は少し外側に置き、2 つ目の関節は届かず、先端だけが鳴らせる
+const KEY_RINGS = [
+  { r: 2.08, n: 12, start: Math.PI, skip: 3 }, // skip:3 本ごとに 1 本(12・3・6・9 時)を抜く
+  { r: 2.28, n: 4, start: Math.PI },
+];
+const KEY_LENGTH = 0.18;    // 線の長さ(腕の長さの何倍か)。内側の端は 1.9(12・3・6・9 時は 2.1)。カオスの状態で、平均 1 秒に 0.55 回ほど鳴る
                             // 2つ目の関節は距離 2 までしか届かないので、内側の端が 2 より内に入るかどうかで、鳴る頻度が大きく変わる
 const KEY_NOTES = 8;        // 音の段の数(sound.js の SCALE の長さと合わせる)
 const KEY_REST = 0.25;      // 同じ鍵盤を続けて鳴らすまでの、最短の間隔(秒)
@@ -605,6 +609,7 @@ function makeKeys(length = KEY_LENGTH) {
   const at = (r, a) => ({ x: r * L * sin(a), y: -L * 0.5 + r * L * cos(a) });
   for (const ring of KEY_RINGS) {
     for (let k = 0; k < ring.n; k++) {
+      if (ring.skip && k % ring.skip === 0) continue;
       const a = ring.start + (TWO_PI * k) / ring.n;
       const outer = at(ring.r, a);
       const inner = at(ring.r - length, a);

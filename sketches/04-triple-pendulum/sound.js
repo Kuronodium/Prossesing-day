@@ -1,5 +1,5 @@
 // 3重振り子の音:振り子の関節や先端が「鍵盤」(sketch.js の keys)に入った瞬間だけ、ベルを1音鳴らす
-//   ・鍵盤ごとに音が決まっている。画面の上にあるほど高い(五音音階なので、どれが重なっても濁らない)
+//   ・鍵盤ごとに音が決まっている。画面の上にあるほど高い(五音音階)。同じ高さの左右の鍵盤は、右側が半音高い
 //   ・振り子が速いほど鍵盤を通る回数が増えるので、カオスが激しいほど音が増える
 //   ・音はエコーと残響で、ゆっくり消えていく(画面の、薄れていく光の軌跡と同じ)
 //   ・鍵盤が左にあれば左から、右にあれば右から聞こえる
@@ -42,7 +42,9 @@ function soundIsOn() {
 window.onKeyHit = (key) => {
   if (!soundIsOn()) return;
   const pan = Math.max(-1, Math.min(1, key.x / (L * 3)));
-  bell(SCALE[Math.min(key.note, SCALE.length - 1)], NOTE_LEVEL, pan);
+  // 左右で同じ高さの鍵盤は、右側を半音上げて、別の音にする(真上と真下の鍵盤は、そのまま)
+  const semitone = key.x > L * 0.01 ? Math.pow(2, 1 / 12) : 1;
+  bell(SCALE[Math.min(key.note, SCALE.length - 1)] * semitone, NOTE_LEVEL, pan);
 };
 
 // ベルの音:基音に、少しずれた高い倍音を重ねる。高い倍音ほど早く消える
