@@ -57,8 +57,8 @@ const CAM_SETTLE = 4;       // 始まりは静止した正面から、この秒�
 // 鍵盤:支点のまわりに、時計の目盛りのように並べた放射状の短い線。関節か先端が線を横切った瞬間、その音が鳴る
 // r = 線の外側の端の、支点からの距離(腕の長さの何倍か)、n = 並べる数、start = 1本目の向き(0 = 真下、PI = 真上)
 // 音の高さは画面上の高さで決まる(上にあるほど高い音)
-const KEY_RINGS = [{ r: 2.4, n: 8, start: Math.PI }];
-const KEY_LENGTH = 0.5;     // 線の長さ(腕の長さの何倍か)。カオスの状態で、平均 1 秒に 1.2 回ほど鳴る(4 割は 2 つ目の関節)
+const KEY_RINGS = [{ r: 2.08, n: 12, start: Math.PI }]; // 時計の文字盤のように 12 本
+const KEY_LENGTH = 0.18;    // 線の長さ(腕の長さの何倍か)。内側の端は 1.9。カオスの状態で、平均 1 秒に 0.7 回ほど鳴る
                             // 2つ目の関節は距離 2 までしか届かないので、内側の端が 2 より内に入るかどうかで、鳴る頻度が大きく変わる
 const KEY_NOTES = 8;        // 音の段の数(sound.js の SCALE の長さと合わせる)
 const KEY_REST = 0.25;      // 同じ鍵盤を続けて鳴らすまでの、最短の間隔(秒)
@@ -426,12 +426,19 @@ function markKeep(prev, now) {
 // 明るさと広がりは、何フレーム前の点かだけで決まるので、表にしておく(1点ごとに指数関数を計算しないため)
 let fadeTable = null;
 let spreadTable = null;
+let bokehTable = null; // 芯の線の、古さごとの光の量(太さ × 濃さ)
+let haloTable = null;  // にじみの線の濃さ。にじみを付ける範囲の終わりに向けて、なめらかに 0 にする
 function makeTables() {
   fadeTable = [];
   spreadTable = [];
+  bokehTable = [];
+  haloTable = [];
   for (let a = 0; a <= HISTORY; a++) {
     fadeTable[a] = fadeAt(a / HISTORY);
     spreadTable[a] = spread(a / HISTORY);
+    bokehTable[a] = 1.5 * Math.pow(1 + ((BOKEH - 1) * a) / HISTORY, 1 - BOKEH_DIM);
+    const h = constrain((a / HISTORY - RECENT * 0.4) / (RECENT * 0.6), 0, 1);
+    haloTable[a] = 1 - h * h * (3 - 2 * h);
   }
 }
 
@@ -451,7 +458,7 @@ function spread(age) {
 // ボケ:古い(奥の)軌跡ほど、線を太く薄くして、ピントが外れたように見せる
 // ぼけた線は「太くて薄い線」とほぼ同じに見えるので、画面全体をぼかすより、ずっと軽い
 const BOKEH = 3;         // いちばん古い線が、新しい線の何倍の太さになるか(1 = ボケなし)
-const BOKEH_BANDS = 10;  // 太さを変える段階の数(多いほど、太さの変わり目が目立たない)
+const BOKEH_BANDS = 16;  // 太さを変える段階の数(多いほど、太さの変わり目が目立たない)
 const BOKEH_DIM = 0.6;   // 太くしたぶん暗くする強さ(1 = 太さに反比例して、光の総量をそのままにする)
 
 function drawTrail(i) {
@@ -460,19 +467,21 @@ function drawTrail(i) {
   // ここより古い部分には、にじみを付けない(軽くするため)
   const recent = max(0, n - 1 - floor(HISTORY * RECENT));
   // 太く薄い線(にじみ)と、細く明るい線(芯)を重ねて、光っているように見せる
-  drawRun(i, recent, n, 5, 0.18);
-  // 芯の線は、古さで区切って、古いほど太く薄く描く
+  drawRun(i, recent, n, 5, 0.18, haloTable);
+  // 芯の線は、古さで区切って、古いほど太く描く
+  // 太さは区切りごとにしか変えられないので、明るさは点ごとに「その区切りの太さで割る」。
+  // 見た目の明るさ(太さ × 濃さ)が古さに沿ってなめらかに変わり、区切りで急に薄くならない
   for (let b = 0; b < BOKEH_BANDS; b++) {
     const to = n - floor((HISTORY * b) / BOKEH_BANDS);
     const from = max(0, n - 1 - floor((HISTORY * (b + 1)) / BOKEH_BANDS));
     if (to - from < 2) break;
-    const blur = 1 + (BOKEH - 1) * ((b + 0.5) / BOKEH_BANDS);
-    drawRun(i, from, to, 1.5 * blur, Math.pow(1 / blur, BOKEH_DIM));
+    const weight = 1.5 * (1 + (BOKEH - 1) * ((b + 0.5) / BOKEH_BANDS));
+    drawRun(i, from, to, weight, 1 / weight, bokehTable);
   }
 }
 
 // 軌跡のうち from から to の手前までを、1本の線で描く
-function drawRun(i, from, to, weight, layer) {
+function drawRun(i, from, to, weight, layer, light = null) {
   const c = color(TRAIL_COLORS[i]);
   const trail = pend.trail;
   const n = trail.length;
@@ -490,7 +499,7 @@ function drawRun(i, from, to, weight, layer) {
     // ほぼ一直線上の点は省く(最初と最後の点は必ず描く)
     if (k !== from && k !== to - 1 && trail[k].keep && !trail[k].keep[i]) continue;
     const ageIndex = n - 1 - k;
-    const alpha = fadeTable[ageIndex] * strength;
+    const alpha = fadeTable[ageIndex] * strength * (light ? light[ageIndex] : 1);
     if (fast) {
       rgba[3] = alpha;
       r.curStrokeColor = rgba;
