@@ -42,52 +42,63 @@
   #sound[aria-pressed="true"] .on { display: block; }
   #sound[aria-pressed="true"] .off { display: none; }
   #sound[hidden] { display: none; }
-  /* 入り口:音ありか音なしかを選んで始める */
+  /* 入り口:画面の下で、左右どちらかを選んで始める(左 = ミュート、右 = 音あり) */
   #entry {
     position: fixed;
     inset: 0;
     z-index: 20;
-    display: grid;
-    place-content: center;
-    gap: 12px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
     padding-left: max(16px, env(safe-area-inset-left, 0px));
     padding-right: max(16px, env(safe-area-inset-right, 0px));
-    background: rgba(8, 9, 15, 0.6);
+    background: rgba(8, 9, 15, 0.35);
     transition: opacity 0.6s;
   }
   #entry.leaving { opacity: 0; pointer-events: none; }
+  #entry .choices {
+    width: 100%;
+    max-width: 600px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
   #entry button {
-    width: min(260px, calc(100vw - 32px));
-    height: 52px;
+    height: 48px;
+    min-width: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 10px;
-    font: 14px/1 system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
-    letter-spacing: 0.08em;
+    gap: 8px;
+    font: 500 13px/1 system-ui, -apple-system, "Helvetica Neue", sans-serif;
+    letter-spacing: 0.06em;
     color: rgba(255, 255, 255, 0.8);
     background: transparent;
     border: 1px solid rgba(255, 255, 255, 0.22);
     border-radius: 12px;
     cursor: pointer;
+    white-space: nowrap;
     -webkit-tap-highlight-color: transparent;
   }
   #entry button.primary { background: rgba(255, 255, 255, 0.08); border-color: transparent; }
   #entry button:focus { outline: none; }
   #entry button:focus-visible { outline: 1px solid rgba(255, 255, 255, 0.5); outline-offset: 2px; }
-  #entry svg { width: 22px; height: 22px; }
+  #entry svg { width: 20px; height: 20px; flex: none; }
   @media (prefers-reduced-motion: reduce) { #sound, #entry { transition: none; } }
 </style>
 
 <div id="entry">
-  <button type="button" class="primary" data-sound="on">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.2L12 5.5v13l-4.8-4H4z" fill="currentColor" fill-opacity="0.15"></path><path d="M15.5 9a4.2 4.2 0 0 1 0 6"></path><path d="M18 6.5a7.8 7.8 0 0 1 0 11"></path></svg>
-    音ありで始める
-  </button>
-  <button type="button" data-sound="off">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.2L12 5.5v13l-4.8-4H4z" fill="currentColor" fill-opacity="0.15"></path><path d="M16 9.5l5 5M21 9.5l-5 5"></path></svg>
-    音なしで始める
-  </button>
+  <div class="choices">
+    <button type="button" data-sound="off">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.2L12 5.5v13l-4.8-4H4z" fill="currentColor" fill-opacity="0.15"></path><path d="M16 9.5l5 5M21 9.5l-5 5"></path></svg>
+      Play muted
+    </button>
+    <button type="button" class="primary" data-sound="on">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.2L12 5.5v13l-4.8-4H4z" fill="currentColor" fill-opacity="0.15"></path><path d="M15.5 9a4.2 4.2 0 0 1 0 6"></path><path d="M18 6.5a7.8 7.8 0 0 1 0 11"></path></svg>
+      Play with sound
+    </button>
+  </div>
 </div>
 
 <button type="button" id="sound" aria-pressed="false" aria-label="音を出す" hidden>

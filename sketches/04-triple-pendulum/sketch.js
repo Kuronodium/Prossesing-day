@@ -39,6 +39,7 @@ const VIEWS = [
   { name: '斜め左', yaw: -0.5, pitch: 0.18, dist: 15 },
   { name: '斜め上', yaw: 0.25, pitch: 0.5, dist: 14 },
 ];
+const LIFT = 0.07;          // 絵全体を持ち上げる量(画面の高さに対する割合)
 const VIEW_SECONDS = 10;    // 1つの視点にとどまる時間
 const CAM_SPRING = 1.4;     // カメラを次の視点へ引き寄せるばねの強さ(大きいほど早く着く)
 const CAM_DAMP = 1.9;       // そのばねの減衰(小さいほど、行き過ぎてから戻る)
@@ -320,7 +321,12 @@ function updateCamera() {
     tx, ty, tz,
     sin(roll), cos(roll), 0
   );
-  perspective(PI / 3, width / height, L * 0.5, L * 200);
+  // 絵全体を少し上に持ち上げる(カメラの向きは変えず、映す範囲だけを下にずらす。原点は画面上の決まった1点から動かない)
+  const near = L * 0.5;
+  const top = near * tan(PI / 6);
+  const right = top * (width / height);
+  const shift = top * 2 * LIFT;
+  frustum(-right, right, -top - shift, top - shift, near, L * 200);
 }
 
 function nextView() {
