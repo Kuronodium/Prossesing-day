@@ -13,8 +13,10 @@ const DEPTH = 30;           // 時間の奥行きの長さ(腕の長さの何倍
 const EXPAND = 5;           // 一番古い過去を、どれだけ広げるか(0 で広げない。5 なら 6 倍)
 const EXPAND_CURVE = 1;     // 広がり方(1 でまっすぐな円錐、大きいほど奥で急に開く)
 // 始まり方:振り子全体が1本の棒のように回って円を描き、数秒でカオスへ崩れていく
-const CIRCLE_MIN = 3;       // 円を描き続ける時間の下限(秒)
-const CIRCLE_MAX = 6;       // 上限(秒)。この範囲に収まる初期値を、表示する前に裏で試して探す
+const CIRCLE_MIN = 0.8;     // 円を描き続ける時間の下限(秒)
+const CIRCLE_MAX = 1.5;     // 上限(秒)。この範囲に収まる初期値を、表示する前に裏で試して探す
+const SPIN_MIN = 3;         // 最初の回転の速さ(ラジアン / 秒)の下限。大きいほど、円が崩れた後も回り続けやすい
+const SPIN_MAX = 4.5;       // 上限
 const BREAK_ANGLE = 0.8;    // 腕どうしの角度がこれだけずれたら「円が崩れた」とみなす(ラジアン)
 
 // 中心(支点)を動かすばね。強さが大きいほど速く戻り、減衰が大きいほど弾まずに止まる
@@ -44,9 +46,9 @@ const ATTENTION = 0.25;     // 見る点が、振り子の先端へ引っぱら�
 // 鍵盤:支点のまわりに、時計の目盛りのように並べた放射状の短い線。関節か先端が線を横切った瞬間、その音が鳴る
 // r = 線の外側の端の、支点からの距離(腕の長さの何倍か)、n = 並べる数、start = 1本目の向き(0 = 真下、PI = 真上)
 // 音の高さは画面上の高さで決まる(上にあるほど高い音)
-const KEY_RINGS = [{ r: 2.62, n: 8, start: Math.PI }];
-const KEY_LENGTH = 0.5;     // 線の長さ(腕の長さの何倍か)。内側の端は距離 2.1 より外に収める
-                            // (2つ目の関節は距離 2 のあたりを回ることが多く、そこまで伸ばすと鳴りっぱなしになる)
+const KEY_RINGS = [{ r: 2.5, n: 8, start: Math.PI }];
+const KEY_LENGTH = 0.55;    // 線の長さ(腕の長さの何倍か)
+                            // 2つ目の関節は距離 2 までしか届かないので、内側の端が 2 より内に入るかどうかで、鳴る頻度が大きく変わる
 const KEY_NOTES = 8;        // 音の段の数(sound.js の SCALE の長さと合わせる)
 const KEY_REST = 0.25;      // 同じ鍵盤を続けて鳴らすまでの、最短の間隔(秒)
 const KEY_MAX_RATE = 3;     // 全体で1秒に鳴らす最大の数
@@ -170,8 +172,8 @@ function findCircleStart() {
   for (let tries = 0; tries < 40; tries++) {
     // 3本の腕をほぼ同じ角度・同じ速さで回し、ほんの少しだけずらす
     const a = random(TWO_PI);
-    const spin = random([-1, 1]) * random(3.5, 6);
-    const nudge = pow(10, random(-3, -0.7)); // ずれの大きさ(0.001 〜 0.2):小さいほど長く円が続く
+    const spin = random([-1, 1]) * random(SPIN_MIN, SPIN_MAX);
+    const nudge = pow(10, random(-2.5, -0.3)); // ずれの大きさ(0.003 〜 0.5):小さいほど長く円が続く
     const cand = {
       th: [a, a + random(-1, 1) * nudge, a + random(-1, 1) * nudge],
       w: [spin, spin, spin],
