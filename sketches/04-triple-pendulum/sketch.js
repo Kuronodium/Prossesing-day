@@ -8,8 +8,11 @@ const G = 9.81;             // 重力
 const SPEED = 1.6;          // 時間の進む速さ(1 で現実と同じ)
 const SUBSTEPS = 10;        // 1フレームの計算を何回に分けるか(多いほど正確)
 const DT = SPEED / 60 / SUBSTEPS;
-const HISTORY = 900;        // 何フレーム分の過去を残すか(60で1秒)
-const DEPTH = 30;           // 時間の奥行きの長さ(腕の長さの何倍か)
+const HISTORY = 1800;       // 何フレーム分の過去を残すか(60で1秒)
+const DEPTH = 40;           // 時間の奥行きの長さ(腕の長さの何倍か)
+const TRAIL_FLOOR = 0.12;   // 古い軌跡も、この明るさまでは残す(最後の 1 割で消える)
+const RECENT = 1 / 3;       // 新しい方からこの割合(10 秒分)は、すべての点を使い、にじみも付けて描く
+const THIN_STEP = 3;        // それより古い部分は、この数ごとに 1 点だけ使って描く(軽くするため)
 const EXPAND = 5;           // 一番古い過去を、どれだけ広げるか(0 で広げない。5 なら 6 倍)
 const EXPAND_CURVE = 1;     // 広がり方(1 でまっすぐな円錐、大きいほど奥で急に開く)
 // 始まり方:振り子全体が1本の棒のように回って円を描き、数秒でカオスへ崩れていく
@@ -56,7 +59,7 @@ const KEY_MAX_RATE = 3;     // 全体で1秒に鳴らす最大の数
 const BG = [8, 9, 15];
 // 軌跡の色:中心、接続部1、接続部2、先端 の順
 const TRAIL_COLORS = ['#f0505e', '#b48cff', '#4a8cff', '#ffc94d'];
-const TRAIL_BRIGHTNESS = [0.55, 0.6, 0.8, 1]; // 軌跡の明るさ。内側ほど控えめにして、注目を先端に集める
+const TRAIL_BRIGHTNESS = [0.8, 0.8, 0.85, 1]; // 軌跡の明るさ。内側ほど控えめにして、注目を先端に集める
 
 let pend;       // 振り子
 let keys = [];  // 鍵盤
@@ -379,18 +382,22 @@ function drawTrail(i) {
   const c = color(TRAIL_COLORS[i]);
   const trail = pend.trail;
   const n = trail.length;
+  const cy = -L * 0.5; // 広げる中心(支点の元の位置)
+  // ここより古い部分は、軽くするために間引いて描き、にじみも付けない
+  const recent = max(0, n - 1 - floor(HISTORY * RECENT));
   // 太く薄い線(にじみ)と、細く明るい線(芯)を重ねて、光っているように見せる
-  for (const [weight, layer] of [[5, 0.18], [1.5, 1]]) {
+  for (const [weight, layer, from] of [[5, 0.18, recent], [1.5, 1, 0]]) {
     const strength = layer * TRAIL_BRIGHTNESS[i];
     strokeWeight(weight);
     beginShape();
-    for (let k = 0; k < n; k++) {
-      const fade = pow(k / n, 1.6); // 古いほど 0 に近づく
+    for (let k = from; k < n; k += k < recent ? THIN_STEP : 1) {
+      // 新しいほど明るく、古くなると TRAIL_FLOOR の明るさでうっすら残り、一番古い 1 割で消えていく
+      const age = (n - 1 - k) / HISTORY;
+      const fade = (TRAIL_FLOOR + (1 - TRAIL_FLOOR) * pow(1 - age, 2.2)) * min(1, (1 - age) / 0.1);
       c.setAlpha(255 * fade * strength);
       stroke(c);
       const pt = trail[k][i];
-      const sc = spread((n - 1 - k) / HISTORY);
-      const cy = -L * 0.5; // 広げる中心(支点の元の位置)
+      const sc = spread(age);
       vertex(pt.x * sc, cy + (pt.y - cy) * sc, -(n - 1 - k) * zStep);
     }
     endShape();
@@ -408,7 +415,7 @@ function drawPendulum() {
     for (let i = 0; i < N; i++) line(pts[i].x, pts[i].y, 0, pts[i + 1].x, pts[i + 1].y, 0);
   }
   // 点:中心 → 1つ目の関節 → 2つ目の関節 → 先端 の順に、大きく明るくなる
-  const size = [0.45, 0.6, 0.75, 1];
+  const size = [0.65, 0.7, 0.75, 1];
   noStroke();
   for (let i = 0; i <= N; i++) {
     push();
