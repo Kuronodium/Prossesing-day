@@ -11,9 +11,10 @@ const DT = SPEED / 60 / SUBSTEPS;
 const HISTORY = 900;        // 何フレーム分の過去を残すか(60で1秒)
 const DEPTH = 30;           // 時間の奥行きの長さ(腕の長さの何倍か)
 const TRAIL_FLOOR = 0.25;   // 古い軌跡も、この明るさまでは残す(最後の 1 割で消える)
+const FADE_SPEED = 6;       // 最初にどれだけ急に暗くなるか(大きいほど、手前の光がすぐ落ち着く)
 const RECENT = 1 / 3;       // 新しい方からこの割合(5 秒分)は、すべての点を使い、にじみも付けて描く
 const THIN_STEP = 1;        // それより古い部分は、この数ごとに 1 点だけ使って描く(2 以上にすると軽くなるが、奥の線が折れ線に見える)
-const EXPAND = 5;           // 一番古い過去を、どれだけ広げるか(0 で広げない。5 なら 6 倍)
+const EXPAND = 6.5;         // 一番古い過去を、どれだけ広げるか(0 で広げない。6.5 なら 7.5 倍)
 const EXPAND_CURVE = 1;     // 広がり方(1 でまっすぐな円錐、大きいほど奥で急に開く)
 // 始まり方:毎回同じ。真上から、3本の腕をほんの少しずつずらし、そろって回し始める
 // 振り子全体が1本の棒のように回って円を描き、約 1.6 秒で崩れてカオスになる
@@ -34,8 +35,8 @@ const SETTLE = 0.02;        // 揺さぶって増えたエネルギーを、1フ
 // focus = 時間の軸のどこを見るか(0 = 現在、1 = 一番古い過去)
 // どの視点も「現在が手前、過去が奥」という向きは崩さない
 const VIEWS = [
+  { name: '正面', yaw: 0.05, pitch: 0.08, dist: 10, focus: 0.15 }, // 最初はいつも正面から
   { name: '斜め右', yaw: 0.5, pitch: 0.22, dist: 17, focus: 0.22 },
-  { name: '正面', yaw: 0.05, pitch: 0.08, dist: 10, focus: 0.15 },
   { name: '斜め左', yaw: -0.5, pitch: 0.18, dist: 17, focus: 0.22 },
   { name: '斜め上', yaw: 0.25, pitch: 0.5, dist: 16, focus: 0.25 },
 ];
@@ -88,6 +89,8 @@ function restart() {
   pivot = { x: 0, y: 0, vx: 0, vy: 0 };
   drag = null;
   recentHits = [];
+  viewIndex = 0; // やり直したら、また正面から
+  viewStart = millis() / 1000;
   makeKeys();
 }
 
@@ -353,10 +356,10 @@ function drawTrail(i) {
     strokeWeight(weight);
     beginShape();
     for (let k = from; k < n; k += k < recent ? THIN_STEP : 1) {
-      // 明るさ:新しい方はゆっくり下がり始め、なめらかに TRAIL_FLOOR へ近づく(なだらかな S 字)
+      // 明るさ:新しい方で最初にぐっと下がり、そのあと、なだらかに TRAIL_FLOOR へ近づく
       // 一番古い 1 割だけ、最後に消えていく
       const age = (n - 1 - k) / HISTORY;
-      const ease = 1 - age * age * (3 - 2 * age);
+      const ease = (exp(-FADE_SPEED * age) - exp(-FADE_SPEED)) / (1 - exp(-FADE_SPEED));
       const fade = (TRAIL_FLOOR + (1 - TRAIL_FLOOR) * ease) * min(1, (1 - age) / 0.1);
       c.setAlpha(255 * fade * strength);
       stroke(c);
