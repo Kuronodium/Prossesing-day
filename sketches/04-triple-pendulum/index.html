@@ -8,9 +8,12 @@
   <style>
     html, body { margin: 0; height: 100%; overflow: hidden; background: #0c0e16; }
     canvas { display: block; touch-action: none; }
+    #sound { position: fixed; right: 12px; bottom: 12px; padding: 8px 14px; }
   </style>
 </head>
 <body>
   <script src="sketch.js"></script>
+  <script src="sound.js"></script>
+  <button id="sound" type="button" onclick="this.textContent = toggleSound() ? '音を止める' : '音を出す'">音を出す</button>
 </body>
 </html>
