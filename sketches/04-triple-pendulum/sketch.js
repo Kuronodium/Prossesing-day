@@ -15,12 +15,11 @@ const RECENT = 1 / 3;       // 新しい方からこの割合(5 秒分)は、す
 const THIN_STEP = 1;        // それより古い部分は、この数ごとに 1 点だけ使って描く(2 以上にすると軽くなるが、奥の線が折れ線に見える)
 const EXPAND = 5;           // 一番古い過去を、どれだけ広げるか(0 で広げない。5 なら 6 倍)
 const EXPAND_CURVE = 1;     // 広がり方(1 でまっすぐな円錐、大きいほど奥で急に開く)
-// 始まり方:振り子全体が1本の棒のように回って円を描き、数秒でカオスへ崩れていく
-const CIRCLE_MIN = 0.8;     // 円を描き続ける時間の下限(秒)
-const CIRCLE_MAX = 1.5;     // 上限(秒)。この範囲に収まる初期値を、表示する前に裏で試して探す
-const SPIN_MIN = 3;         // 最初の回転の速さ(ラジアン / 秒)の下限。大きいほど、円が崩れた後も回り続けやすい
-const SPIN_MAX = 4.5;       // 上限
-const BREAK_ANGLE = 0.8;    // 腕どうしの角度がこれだけずれたら「円が崩れた」とみなす(ラジアン)
+// 始まり方:毎回同じ。真上から、3本の腕をほんの少しずつずらし、そろって回し始める
+// 振り子全体が1本の棒のように回って円を描き、約 1.6 秒で崩れてカオスになる
+// (真上から放すと、円が続く時間はずらし幅ではなく回す速さでほぼ決まる:2.2 で約 1.6 秒、2.5 で約 2.3 秒)
+const START_SPIN = 2.2;     // 最初に回す速さ(ラジアン / 秒)
+const START_NUDGE = 0.01;   // 腕どうしのずらし幅(ラジアン)
 
 // 中心(支点)を動かすばね。強さが大きいほど速く戻り、減衰が大きいほど弾まずに止まる
 const SPRING = 60;          // 離したときに、元の位置へ戻すばねの強さ
@@ -59,7 +58,7 @@ const KEY_MAX_RATE = 3;     // 全体で1秒に鳴らす最大の数
 const BG = [8, 9, 15];
 // 軌跡の色:中心、接続部1、接続部2、先端 の順
 const TRAIL_COLORS = ['#f0505e', '#b48cff', '#4a8cff', '#ffc94d'];
-const TRAIL_BRIGHTNESS = [0.8, 0.8, 0.85, 1]; // 軌跡の明るさ。内側ほど控えめにして、注目を先端に集める
+const TRAIL_BRIGHTNESS = [0.6, 0.65, 0.85, 1]; // 軌跡の明るさ。内側ほど控えめにして、注目を先端に集める
 
 let pend;       // 振り子
 let keys = [];  // 鍵盤
@@ -83,8 +82,8 @@ function restart() {
   L = min(width, height) * 0.1;
   zStep = (L * DEPTH) / HISTORY;
   frameIndex = 0;
-  const start = findCircleStart();
-  pend = { th: start.th, w: start.w, trail: [] };
+  const th = [PI, PI + START_NUDGE, PI - START_NUDGE];
+  pend = { th, w: [START_SPIN, START_SPIN, START_SPIN], trail: [] };
   pend.baseEnergy = energy(pend); // 最初のエネルギー。揺さぶって増えても、ここへ戻っていく
   pivot = { x: 0, y: 0, vx: 0, vy: 0 };
   drag = null;
@@ -164,43 +163,6 @@ function rk4(p, ax = 0, ay = 0, dt = DT) {
     p.th[i] += (DT / 6) * (k1t[i] + 2 * k2t[i] + 2 * k3t[i] + k4t[i]);
     p.w[i] += (DT / 6) * (k1w[i] + 2 * k2w[i] + 2 * k3w[i] + k4w[i]);
   }
-}
-
-// ---- 始まり方を探す ----
-
-// 円を描く時間が CIRCLE_MIN 〜 CIRCLE_MAX 秒になる初期値を、試しに動かして探す
-function findCircleStart() {
-  let best = null;
-  for (let tries = 0; tries < 40; tries++) {
-    // 3本の腕をほぼ同じ角度・同じ速さで回し、ほんの少しだけずらす
-    const a = random(TWO_PI);
-    const spin = random([-1, 1]) * random(SPIN_MIN, SPIN_MAX);
-    const nudge = pow(10, random(-2.5, -0.3)); // ずれの大きさ(0.003 〜 0.5):小さいほど長く円が続く
-    const cand = {
-      th: [a, a + random(-1, 1) * nudge, a + random(-1, 1) * nudge],
-      w: [spin, spin, spin],
-    };
-    const secs = circleSeconds(cand);
-    const miss = secs < CIRCLE_MIN ? CIRCLE_MIN - secs : secs > CIRCLE_MAX ? secs - CIRCLE_MAX : 0;
-    if (!best || miss < best.miss) best = { th: cand.th.slice(), w: cand.w.slice(), miss, secs };
-    if (miss === 0) break;
-  }
-  return best;
-}
-
-// 腕どうしの角度が BREAK_ANGLE 以上ずれるまでの時間(画面上の秒)
-function circleSeconds(start) {
-  const q = { th: start.th.slice(), w: start.w.slice() };
-  const dt = 0.01;
-  const limit = (CIRCLE_MAX + 2) * SPEED;
-  for (let t = 0; t < limit; t += dt) {
-    rk4(q, 0, 0, dt);
-    for (let i = 1; i < N; i++) {
-      const d = q.th[i] - q.th[i - 1];
-      if (abs(atan2(sin(d), cos(d))) > BREAK_ANGLE) return t / SPEED;
-    }
-  }
-  return limit / SPEED;
 }
 
 // 振り子のエネルギー(動きの勢い + 高さ)
