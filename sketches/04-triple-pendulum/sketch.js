@@ -9,6 +9,7 @@ const SUBSTEPS = 10;        // 1フレームの計算を何回に分けるか(�
 const DT = SPEED / 60 / SUBSTEPS;
 const HISTORY = 900;        // 何フレーム分の過去を残すか(60で1秒)
 const DEPTH = 30;           // 時間の奥行きの長さ(腕の長さの何倍か)
+const START_SPIN = 4;       // 最初の勢いの最大値(1秒あたりの回転角、ラジアン)
 
 const BG = [8, 9, 15];
 // 軌跡の色:中心、接続部1、接続部2、先端 の順
@@ -30,8 +31,10 @@ function restart() {
   L = min(width, height) * 0.1;
   zStep = (L * DEPTH) / HISTORY;
   frameIndex = 0;
-  // 高く持ち上げてから放す
-  pend = { th: [random(1.6, 2.6), random(1.6, 2.6), random(1.6, 2.6)], w: [0, 0, 0], trail: [] };
+  // ほぼ真上まで持ち上げて、さらに勢いをつけて放す(上まで回り込めるだけのエネルギーを与える)
+  const th = [0, 0, 0].map(() => random([-1, 1]) * random(2.6, PI));
+  const w = [0, 0, 0].map(() => random(-START_SPIN, START_SPIN));
+  pend = { th, w, trail: [] };
 }
 
 function draw() {
