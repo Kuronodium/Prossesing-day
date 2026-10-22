@@ -1,5 +1,5 @@
 // 3重振り子の時空図:振り子は手前の平面で揺れ、各点が残す光の軌跡が奥(過去)へ流れていく
-//   色:先端は黄色のライト、中間の2つの関節は青系(黄色と反対の色で、先端を目立たせる)、中心(支点)は赤
+//   すべて光の線でできている。腕と鍵盤は白、先端は黄色のライト、2つ目の関節は青、1つ目の関節は明るい紫、中心(支点)は赤
 // ドラッグで中心をずらせる(離すと、ばねで元の位置に戻る)。カメラは自動で視点を移る
 // R キーでやり直し、V キーで次の視点へ
 
@@ -55,9 +55,8 @@ const KEY_MAX_RATE = 3;     // 全体で1秒に鳴らす最大の数
 
 const BG = [8, 9, 15];
 // 軌跡の色:中心、接続部1、接続部2、先端 の順
-const TRAIL_COLORS = ['#f0505e', '#3550c8', '#4a8cff', '#ffc94d'];
+const TRAIL_COLORS = ['#f0505e', '#b48cff', '#4a8cff', '#ffc94d'];
 const TRAIL_BRIGHTNESS = [0.55, 0.6, 0.8, 1]; // 軌跡の明るさ。内側ほど控えめにして、注目を先端に集める
-const BODY = [150, 155, 166]; // 振り子本体の色(マットな灰色)
 
 let pend;       // 振り子
 let keys = [];  // 鍵盤
@@ -118,7 +117,6 @@ function draw() {
   gl.enable(gl.DEPTH_TEST);
 
   drawPendulum();
-  drawBulb();
 }
 
 // ---- 物理:3重振り子の運動方程式(腕の長さ1、おもりの重さ1)----
@@ -399,34 +397,33 @@ function drawTrail(i) {
   }
 }
 
-// 振り子本体:マットな灰色の、平らな線と円
+// 振り子本体:白く光る腕と、それぞれの色で光る点(先端が一番明るく、内側ほど控えめ)
 function drawPendulum() {
   const pts = points(pend.th);
-  stroke(...BODY);
-  strokeWeight(L * 0.07);
-  for (let i = 0; i < N; i++) line(pts[i].x, pts[i].y, 0, pts[i + 1].x, pts[i + 1].y, 0);
-  noStroke();
-  fill(...BODY);
-  for (let i = 0; i < N; i++) circle(pts[i].x, pts[i].y, L * 0.18);
-}
-
-// 先端の電球:自分で光る球と、まわりのぼんやりした光
-function drawBulb() {
-  const tip = points(pend.th)[N];
-  noStroke();
-  push();
-  translate(tip.x, tip.y, 0);
-  fill(255);
-  sphere(L * 0.06, 12, 8);
   blendMode(ADD);
-  const c = color(TRAIL_COLORS[N]);
-  for (const [r, a] of [[0.12, 120], [0.22, 45], [0.38, 18]]) {
-    c.setAlpha(a);
-    fill(c);
-    sphere(L * r, 14, 10);
+  // 腕:細い芯の線のまわりに、うっすらにじみを付ける
+  for (const [weight, a] of [[1.5, 220], [5, 45], [11, 14]]) {
+    stroke(255, 255, 255, a);
+    strokeWeight(weight);
+    for (let i = 0; i < N; i++) line(pts[i].x, pts[i].y, 0, pts[i + 1].x, pts[i + 1].y, 0);
+  }
+  // 点:中心 → 1つ目の関節 → 2つ目の関節 → 先端 の順に、大きく明るくなる
+  const size = [0.45, 0.6, 0.75, 1];
+  noStroke();
+  for (let i = 0; i <= N; i++) {
+    push();
+    translate(pts[i].x, pts[i].y, 0);
+    fill(255, 255, 255, 255 * size[i]);
+    sphere(L * 0.06 * size[i], 12, 8);
+    const c = color(TRAIL_COLORS[i]);
+    for (const [r, a] of [[0.12, 120], [0.22, 45], [0.38, 18]]) {
+      c.setAlpha(a * size[i]);
+      fill(c);
+      sphere(L * r * size[i], 14, 10);
+    }
+    pop();
   }
   blendMode(BLEND);
-  pop();
 }
 
 // 1秒ごとの輪:時間の目盛りとして、奥へ流れていく
@@ -461,7 +458,6 @@ function makeKeys(length = KEY_LENGTH) {
         x: (outer.x + inner.x) / 2, // 線の真ん中(音の左右と、高さの段に使う)
         y: (outer.y + inner.y) / 2,
         glow: 0,
-        col: color(255),
         last: -1,
       });
     }
@@ -489,7 +485,6 @@ function checkKeys(prev, now) {
       recentHits.push(t);
       const speed = dist(a.x, a.y, c.x, c.y) / L * 60; // ヒットしたときの速さ(腕の長さ / 秒)
       key.glow = 1;
-      key.col = color(TRAIL_COLORS[b]);
       if (typeof window.onKeyHit === 'function') window.onKeyHit(key, b, speed);
     }
   }
@@ -505,15 +500,15 @@ function segmentsCross(a, b, c, d) {
   return d1 * d2 < 0 && d3 * d4 < 0;
 }
 
-// 鍵盤:ふだんは薄い線、ヒットすると光ってゆっくり消える
+// 鍵盤:ふだんは薄い白い線、ヒットすると白く光ってゆっくり消える
 function drawKeys() {
   noFill();
   for (const key of keys) {
     strokeWeight(1.5);
-    stroke(150, 160, 190, 70);
+    stroke(255, 255, 255, 70);
     line(key.p1.x, key.p1.y, 0, key.p2.x, key.p2.y, 0);
     if (key.glow > 0.01) {
-      const c = key.col;
+      const c = color(255);
       for (const [weight, a] of [[2.5, 230], [7, 70], [14, 25]]) {
         c.setAlpha(a * key.glow);
         stroke(c);
