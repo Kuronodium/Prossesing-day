@@ -47,7 +47,7 @@ const ATTENTION = 0.25;     // 見る点が、振り子の先端へ引っぱら�
 // 距離 2 は、最初の円(腕が伸びきって回る間)に2つ目の関節がちょうど通る距離。円の間は規則正しく、崩れるとランダムに鳴る
 const KEY_RINGS = [{ r: 2.45, n: 8, start: Math.PI }];
 const KEY_NOTES = 8;        // 音の段の数(sound.js の SCALE の長さと合わせる)
-const KEY_SIZE = 0.2;       // 鍵盤の輪の半径(腕の長さの何倍か)
+const KEY_SIZE = 0.16;      // 鍵盤の輪の半径(腕の長さの何倍か)
 const KEY_REST = 0.25;      // 同じ鍵盤を続けて鳴らすまでの、最短の間隔(秒)
 const KEY_MAX_RATE = 3;     // 全体で1秒に鳴らす最大の数
 
