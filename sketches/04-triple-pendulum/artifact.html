@@ -1,0 +1,135 @@
+<title>3重振り子の時空図</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* 全画面の時空図だけ。下に、音のオン/オフを切り替える横長のアイコンボタンを、うっすら浮かべる */
+  :root {
+    --bg: #0c0e16;
+    --on: rgba(255, 255, 255, 0.75);       /* 音がオン:うっすら白い背景 */
+    --on-bg: rgba(255, 255, 255, 0.08);
+    --off: rgba(255, 255, 255, 0.4);       /* ミュート:白い線だけで、背景なし */
+    --off-line: rgba(255, 255, 255, 0.2);
+    color-scheme: dark;
+  }
+  html, body { height: 100%; overflow: hidden; }
+  body { background: var(--bg); }
+  canvas { position: fixed; inset: 0; display: block; touch-action: none; }
+  #sound {
+    position: fixed;
+    z-index: 10; /* キャンバスより上に出す(キャンバスは後から作られるので、指定しないと隠れる) */
+    left: 0;
+    right: 0;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    width: calc(100% - 32px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+    max-width: 600px;
+    height: 44px;
+    margin: 0 auto;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    color: var(--off);
+    background: transparent;
+    border: 1px solid var(--off-line);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: color 0.4s, background-color 0.4s, border-color 0.4s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #sound[aria-pressed="true"] { color: var(--on); background: var(--on-bg); border-color: transparent; }
+  #sound:focus { outline: none; }
+  #sound:focus-visible { outline: 1px solid var(--off); outline-offset: 2px; } /* キーボードで選んだときだけ */
+  #sound svg { width: 26px; height: 26px; }
+  #sound .on { display: none; }
+  #sound[aria-pressed="true"] .on { display: block; }
+  #sound[aria-pressed="true"] .off { display: none; }
+  #sound[hidden] { display: none; }
+  /* 入り口:音ありか音なしかを選んで始める */
+  #entry {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: grid;
+    place-content: center;
+    gap: 12px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    background: rgba(8, 9, 15, 0.6);
+    transition: opacity 0.6s;
+  }
+  #entry.leaving { opacity: 0; pointer-events: none; }
+  #entry button {
+    width: min(260px, calc(100vw - 32px));
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    font: 14px/1 system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    letter-spacing: 0.08em;
+    color: rgba(255, 255, 255, 0.8);
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 12px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #entry button.primary { background: rgba(255, 255, 255, 0.08); border-color: transparent; }
+  #entry button:focus { outline: none; }
+  #entry button:focus-visible { outline: 1px solid rgba(255, 255, 255, 0.5); outline-offset: 2px; }
+  #entry svg { width: 22px; height: 22px; }
+  @media (prefers-reduced-motion: reduce) { #sound, #entry { transition: none; } }
+</style>
+
+<div id="entry">
+  <button type="button" class="primary" data-sound="on">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.2L12 5.5v13l-4.8-4H4z" fill="currentColor" fill-opacity="0.15"></path><path d="M15.5 9a4.2 4.2 0 0 1 0 6"></path><path d="M18 6.5a7.8 7.8 0 0 1 0 11"></path></svg>
+    音ありで始める
+  </button>
+  <button type="button" data-sound="off">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.2L12 5.5v13l-4.8-4H4z" fill="currentColor" fill-opacity="0.15"></path><path d="M16 9.5l5 5M21 9.5l-5 5"></path></svg>
+    音なしで始める
+  </button>
+</div>
+
+<button type="button" id="sound" aria-pressed="false" aria-label="音を出す" hidden>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M4 9.5h3.2L12 5.5v13l-4.8-4H4z" fill="currentColor" fill-opacity="0.15"></path>
+    <g class="off"><path d="M16 9.5l5 5M21 9.5l-5 5"></path></g>
+    <g class="on"><path d="M15.5 9a4.2 4.2 0 0 1 0 6"></path><path d="M18 6.5a7.8 7.8 0 0 1 0 11"></path></g>
+  </svg>
+</button>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.11.1/p5.min.js"></script>
+<script src="sketch.js"></script>
+<script src="sound.js"></script>
+<script>
+  const soundBtn = document.getElementById('sound');
+  const entry = document.getElementById('entry');
+
+  function showSound(on) {
+    soundBtn.setAttribute('aria-pressed', String(on));
+    soundBtn.setAttribute('aria-label', on ? '音を止める' : '音を出す');
+  }
+  function setSound(on) {
+    if (on !== soundIsOn()) toggleSound();
+    showSound(on);
+    // 鳴らしたはずなのに音の準備が始まっていなければ、ミュートの表示に戻す
+    if (on) setTimeout(() => showSound(soundIsOn()), 800);
+  }
+
+  // 入り口で選ぶまでは、振り子を止めておく(p5 が setup を終えた後に止める)
+  window.addEventListener('load', () => noLoop());
+
+  // 入り口:選んだら、音の状態を決めて、最初から再生を始める
+  for (const btn of entry.querySelectorAll('button')) {
+    btn.addEventListener('click', () => {
+      setSound(btn.dataset.sound === 'on'); // ボタンを押した瞬間なので、確実に音を始められる
+      restart();
+      loop();
+      soundBtn.hidden = false;
+      entry.classList.add('leaving');
+      setTimeout(() => entry.remove(), 700);
+    });
+  }
+
+  soundBtn.addEventListener('click', () => setSound(!soundIsOn()));
+</script>
