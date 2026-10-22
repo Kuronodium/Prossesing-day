@@ -368,19 +368,18 @@ function drawBulb() {
   pop();
 }
 
-// 1秒ごとの枠:時間の目盛りとして、奥へ流れていく
+// 1秒ごとの輪:時間の目盛りとして、奥へ流れていく
 function drawTimeFrames() {
   noFill();
   strokeWeight(1);
   const r = L * 3.2;
   for (let f = frameIndex - (frameIndex % 60); f > frameIndex - HISTORY; f -= 60) {
     const z = -(frameIndex - f) * zStep;
-    stroke(120, 130, 160, map(z, 0, -HISTORY * zStep, 50, 0));
+    stroke(150, 160, 190, map(z, 0, -HISTORY * zStep, 90, 0));
     push();
     translate(0, -L * 0.5, z);
-    rectMode(CENTER);
     const sc = spread((frameIndex - f) / HISTORY);
-    rect(0, 0, r * 2 * sc, r * 2 * sc);
+    ellipse(0, 0, r * 2 * sc, r * 2 * sc, 64); // 64 角形で、大きく広げても丸く見えるようにする
     pop();
   }
 }
