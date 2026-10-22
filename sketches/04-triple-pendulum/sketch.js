@@ -1,6 +1,7 @@
 // 3重振り子の時空図:振り子は手前の平面で揺れ、各点が残す光の軌跡が奥(過去)へ流れていく
 //   中心(支点)はピンク、接続部は青、先端は黄色のライト
-// ドラッグで中心をずらせる(離すと、ばねで元の位置に戻る)。R キーでやり直し
+// ドラッグで中心をずらせる(離すと、ばねで元の位置に戻る)。カメラは自動で視点を移る
+// R キーでやり直し、V キーで次の視点へ
 
 const N = 3;                // 振り子の段数
 const G = 9.81;             // 重力
@@ -16,8 +17,21 @@ const SPRING = 60;          // 離したときに、元の位置へ戻すばね�
 const SPRING_DAMP = 6;      // そのばねの減衰
 const DRAG_SPRING = 150;    // ドラッグ中に、指へ引き寄せるばねの強さ
 const DRAG_DAMP = 25;       // そのばねの減衰
-const MAX_SHIFT = 2;        // 中心をずらせる最大距離(腕の長さの何倍か)
+const MAX_SHIFT = 1;        // 中心をずらせる最大距離(腕の長さの何倍か)
+const MAX_ACCEL = 30;       // 中心の加速度の上限(重力 9.81 の約3倍)。指をどれだけ速く動かしても、これ以上の力は伝わらない
 const SETTLE = 0.02;        // 揺さぶって増えたエネルギーを、1フレームで何割抜くか
+
+// カメラの視点。yaw = 左右の回り込み、pitch = 見下ろす角度、dist = 距離(腕の長さの何倍か)
+// focus = 時間の軸のどこを見るか(0 = 現在、1 = 一番古い過去)
+const VIEWS = [
+  { name: '斜め', yaw: 0.5, pitch: 0.22, dist: 17, focus: 0.22 },
+  { name: '正面', yaw: 0.05, pitch: 0.08, dist: 10, focus: 0.15 },
+  { name: '真横', yaw: Math.PI / 2, pitch: 0.12, dist: 17, focus: 0.42 },
+  { name: '上', yaw: 0.35, pitch: 1.15, dist: 22, focus: 0.45 },
+  { name: '過去から', yaw: Math.PI - 0.45, pitch: 0.25, dist: 16, focus: 0.55 },
+];
+const VIEW_SECONDS = 10;    // 1つの視点にとどまる時間
+const MOVE_SECONDS = 3;     // 次の視点へ移る時間
 
 const BG = [8, 9, 15];
 // 軌跡の色:中心、接続部1、接続部2、先端 の順
@@ -30,6 +44,9 @@ let drag;       // ドラッグ中なら、始めた時の指と中心の位置�
 let L;          // 腕1本の長さ(画面上のピクセル)
 let zStep;      // 1フレームで、どれだけ奥へ流れるか
 let frameIndex; // 始まってからのフレーム数
+let viewIndex = 0;   // いまの視点
+let viewStart = 0;   // いまの視点に移り始めた時刻(秒)
+let camFrom = null;  // 移る前のカメラ(移っている途中の位置から、なめらかにつなぐため)
 
 function setup() {
   pixelDensity(min(2, displayDensity()));
@@ -52,10 +69,7 @@ function restart() {
 
 function draw() {
   background(BG);
-  // 時間の軸に沿って、斜め前から覗き込む
-  rotateY(-0.38);
-  rotateX(-0.2);
-  translate(L * 0.6, 0, L * 5);
+  updateCamera();
 
   const target = dragTarget();
   for (let s = 0; s < SUBSTEPS; s++) {
@@ -182,8 +196,13 @@ function dragTarget() {
 function movePivot(target) {
   const k = drag ? DRAG_SPRING : SPRING;
   const c = drag ? DRAG_DAMP : SPRING_DAMP;
-  const ax = k * (target.x - pivot.x) - c * pivot.vx;
-  const ay = k * (target.y - pivot.y) - c * pivot.vy;
+  let ax = k * (target.x - pivot.x) - c * pivot.vx;
+  let ay = k * (target.y - pivot.y) - c * pivot.vy;
+  const a = Math.hypot(ax, ay);
+  if (a > MAX_ACCEL) {
+    ax *= MAX_ACCEL / a;
+    ay *= MAX_ACCEL / a;
+  }
   pivot.vx += ax * DT;
   pivot.vy += ay * DT;
   pivot.x += pivot.vx * DT;
@@ -202,6 +221,63 @@ function points(th) {
     pts.push({ x, y });
   }
   return pts;
+}
+
+// ---- カメラ ----
+
+// いまのカメラ設定(視点 + ゆっくりした漂い)
+function currentCam() {
+  const t = millis() / 1000;
+  if (!camFrom) return drifted(VIEWS[viewIndex], t);
+  const k = constrain((t - viewStart) / MOVE_SECONDS, 0, 1);
+  const e = k * k * (3 - 2 * k); // ゆっくり動き出して、ゆっくり止まる
+  const to = drifted(VIEWS[viewIndex], t);
+  const from = camFrom;
+  // 角度は近い向きに回る
+  let dy = to.yaw - from.yaw;
+  dy = ((dy + PI) % TWO_PI + TWO_PI) % TWO_PI - PI;
+  return {
+    yaw: from.yaw + dy * e,
+    pitch: lerp(from.pitch, to.pitch, e),
+    dist: lerp(from.dist, to.dist, e),
+    focus: lerp(from.focus, to.focus, e),
+  };
+}
+
+// 視点に、ゆっくりした揺らぎ(回り込み・上下・寄り引き)を足す
+function drifted(v, t) {
+  return {
+    yaw: v.yaw + 0.18 * sin(t * 0.11),
+    pitch: v.pitch + 0.06 * sin(t * 0.17),
+    dist: v.dist * (1 + 0.1 * sin(t * 0.07)),
+    focus: v.focus,
+  };
+}
+
+function updateCamera() {
+  const t = millis() / 1000;
+  if (t - viewStart > VIEW_SECONDS) nextView();
+  const c = currentCam();
+  // 縦長の画面では、遠くから見ないとはみ出すので距離を伸ばす
+  const fit = max(1, 0.85 / (width / height));
+  const d = c.dist * L * fit;
+  const tx = 0;
+  const ty = -L * 0.5;
+  const tz = -c.focus * L * DEPTH;
+  camera(
+    tx + d * sin(c.yaw) * cos(c.pitch),
+    ty - d * sin(c.pitch),
+    tz + d * cos(c.yaw) * cos(c.pitch),
+    tx, ty, tz,
+    0, 1, 0
+  );
+  perspective(PI / 3, width / height, L * 0.5, L * 200);
+}
+
+function nextView() {
+  camFrom = currentCam();
+  viewIndex = (viewIndex + 1) % VIEWS.length;
+  viewStart = millis() / 1000;
 }
 
 // ---- 描画 ----
@@ -280,4 +356,5 @@ function windowResized() {
 
 function keyPressed() {
   if (key === 'r' || key === 'R') restart();
+  if (key === 'v' || key === 'V') nextView();
 }
