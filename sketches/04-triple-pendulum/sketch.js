@@ -84,11 +84,13 @@ let viewIndex = 0;   // いまの視点
 let viewStart = 0;   // いまの視点に移った時刻(秒)
 let cam = null;      // いまのカメラの状態と速さ(重さのあるカメラとして動かす)
 let camStart = 0;    // カメラが動き始めた時刻(秒)
+let camRight, camUp; // 画面の右と上が、空間でどちらを向いているか(光の板をカメラに向けるため)
+let glowTex = [];    // 点の光の画像(色ごと)
 
 function setup() {
   pixelDensity(min(2, displayDensity()));
   createCanvas(windowWidth, windowHeight, WEBGL);
-  if (webglVersion === WEBGL2) makeBloom(); // なめらかな線のまま裏の画像に描けるのは WebGL2 だけ
+  glowTex = TRAIL_COLORS.map(makeGlow);
   restart();
 }
 
@@ -116,75 +118,7 @@ function restart() {
 function draw() {
   // 実際に経過した時間で進める(画面の更新が 60 回/秒でも 144 回/秒でも、同じ速さで動くように)
   const elapsed = min(deltaTime, 100) / 1000;
-  watchSpeed(elapsed);
-  if (bloom) {
-    bloom.scene.begin();
-    drawingToBloom = true;
-    drawScene(elapsed);
-    drawingToBloom = false;
-    bloom.scene.end();
-    applyBloom();
-  } else {
-    drawScene(elapsed);
-  }
-}
-
-// ---- ブルーム(明るい部分のまわりに、光がにじむ効果)----
-// 画面をいったん裏の画像に描き、それを小さく縮めてぼかしたものを、光として重ねる
-// 縮めてからぼかすので軽い。それでも動きがカクつく端末では、自動で切る
-const BLOOM_SCALE = 0.25;    // ぼかす画像の大きさ(画面に対する割合)
-const BLOOM_BLUR = 3;        // ぼかしの強さ
-const BLOOM_STRENGTH = 0.9;  // 重ねる光の強さ(0〜1)
-const SLOW_FRAME_MS = 26;    // 1フレームがこれより遅い状態が続いたら、ブルームを切る
-let bloom = null;
-let slowMs = 0;
-let drawingToBloom = false; // いま裏の画像に描いているか
-
-function makeBloom() {
-  if (bloom) {
-    bloom.scene.remove();
-    bloom.glow.remove();
-  }
-  bloom = {
-    scene: createFramebuffer({ antialias: true }),
-    glow: createFramebuffer({
-      width: max(1, floor(width * BLOOM_SCALE)),
-      height: max(1, floor(height * BLOOM_SCALE)),
-      density: 1,
-      depth: false,
-    }),
-  };
-}
-
-function applyBloom() {
-  const { scene, glow } = bloom;
-  glow.begin();
-  clear();
-  noStroke();
-  image(scene, -glow.width / 2, -glow.height / 2, glow.width, glow.height);
-  filter(BLUR, BLOOM_BLUR);
-  glow.end();
-
-  background(BG);
-  noStroke();
-  image(scene, -width / 2, -height / 2, width, height);
-  blendMode(ADD);
-  tint(255, 255 * BLOOM_STRENGTH);
-  image(glow, -width / 2, -height / 2, width, height);
-  noTint();
-  blendMode(BLEND);
-}
-
-// 動きが重い状態(1フレーム SLOW_FRAME_MS ミリ秒超え)が合計2秒続いたら、ブルームを切る
-function watchSpeed(elapsed) {
-  if (!bloom || !running) return;
-  if (elapsed * 1000 > SLOW_FRAME_MS) slowMs += elapsed * 1000;
-  else slowMs = max(0, slowMs - elapsed * 500);
-  if (slowMs > 2000) {
-    bloom.scene.remove();
-    bloom.glow.remove();
-    bloom = null;
-  }
+  drawScene(elapsed);
 }
 
 function drawScene(elapsed) {
@@ -444,12 +378,14 @@ function updateCamera(elapsed = 1 / 60) {
   const side = p5.Vector.cross(forward, up).normalize();
   up.mult(cos(roll)).add(side.mult(sin(roll)));
   camera(tx + ex, ty + ey, tz + ez, tx, ty, tz, up.x, up.y, up.z);
+  camUp = up;
+  camRight = p5.Vector.cross(forward, up).normalize();
   // 絵全体を少し上に持ち上げる(カメラの向きは変えず、映す範囲だけを下にずらす。原点は画面上の決まった1点から動かない)
   const near = L * 0.5;
   const top = near * tan(PI / 6);
   const right = top * (width / height);
   // 裏の画像(ブルーム用)に描くときは上下が画面と逆になるので、ずらす向きも逆にする
-  const shift = top * 2 * LIFT * (drawingToBloom ? -1 : 1);
+  const shift = top * 2 * LIFT;
   frustum(-right, right, -top - shift, top - shift, near, L * 200);
 }
 
@@ -562,22 +498,61 @@ function drawPendulum() {
     for (let i = 0; i < N; i++) line(pts[i].x, pts[i].y, 0, pts[i + 1].x, pts[i + 1].y, 0);
   }
   // 点:中心 → 1つ目の関節 → 2つ目の関節 → 先端 の順に、大きく明るくなる
+  // 光は、中心からなめらかに減っていくグラデーションの画像を、いつもカメラの方を向く板に貼って描く
   const size = [0.65, 0.7, 0.75, 1];
+  const gl = drawingContext;
+  gl.disable(gl.DEPTH_TEST); // 光どうしが、互いに隠し合わないように
   noStroke();
+  textureMode(NORMAL);
   for (let i = 0; i <= N; i++) {
     push();
     translate(pts[i].x, pts[i].y, 0);
     fill(255, 255, 255, 255 * size[i]);
-    sphere(L * 0.06 * size[i], 12, 8);
-    const c = color(TRAIL_COLORS[i]);
-    for (const [r, a] of [[0.12, 120], [0.22, 45], [0.38, 18]]) {
-      c.setAlpha(a * size[i]);
-      fill(c);
-      sphere(L * r * size[i], 14, 10);
-    }
+    sphere(L * 0.05 * size[i], 12, 8);
+    const r = L * GLOW_RADIUS * size[i];
+    const ax = p5.Vector.mult(camRight, r);
+    const ay = p5.Vector.mult(camUp, r);
+    tint(255 * size[i]);
+    texture(glowTex[i]);
+    beginShape(TRIANGLE_STRIP);
+    vertex(-ax.x - ay.x, -ax.y - ay.y, -ax.z - ay.z, 0, 0);
+    vertex(ax.x - ay.x, ax.y - ay.y, ax.z - ay.z, 1, 0);
+    vertex(-ax.x + ay.x, -ax.y + ay.y, -ax.z + ay.z, 0, 1);
+    vertex(ax.x + ay.x, ax.y + ay.y, ax.z + ay.z, 1, 1);
+    endShape();
     pop();
   }
+  noTint();
+  gl.enable(gl.DEPTH_TEST);
   blendMode(BLEND);
+}
+
+// 点の光の画像:中心から指数関数的に暗くなり、外側の縁でちょうど 0 になる
+// (黒い部分は、光を足す描き方では何も足さないので、背景になじむ)
+const GLOW_RADIUS = 0.5;  // 光の広がり(腕の長さに対する割合)
+const GLOW_PEAK = 0.78;   // 中心付近の明るさ
+const GLOW_FALLOFF = 0.1; // 明るさが 1/e になる距離(腕の長さに対する割合)
+function makeGlow(hex) {
+  const n = 128;
+  const g = createGraphics(n, n);
+  g.pixelDensity(1);
+  g.loadPixels();
+  const c = color(hex);
+  const rgb = [red(c), green(c), blue(c)];
+  const peak = GLOW_PEAK * Math.exp(0.07 / GLOW_FALLOFF);
+  const edge = peak * Math.exp(-GLOW_RADIUS / GLOW_FALLOFF);
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const d = Math.hypot(x + 0.5 - n / 2, y + 0.5 - n / 2) / (n / 2) * GLOW_RADIUS;
+      const v = Math.max(0, Math.min(GLOW_PEAK, peak * Math.exp(-d / GLOW_FALLOFF)) - edge);
+      const k = 4 * (y * n + x);
+      // ごく小さなざらつきを混ぜて、暗いところに色の段差(縞)が出ないようにする
+      for (let j = 0; j < 3; j++) g.pixels[k + j] = Math.min(255, Math.max(0, rgb[j] * v + Math.random() - 0.5));
+      g.pixels[k + 3] = 255;
+    }
+  }
+  g.updatePixels();
+  return g;
 }
 
 // 1秒ごとの輪:時間の目盛りとして、奥へ流れていく
@@ -689,7 +664,6 @@ function drawKeys() {
 // 振り子や軌跡の位置は腕の長さ L に比例しているので、新しい L に合わせて伸び縮みさせる
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
-  if (bloom) makeBloom();
   const k = (min(width, height) * 0.1) / L;
   L *= k;
   zStep = (L * DEPTH) / HISTORY;
