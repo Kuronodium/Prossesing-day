@@ -28,18 +28,21 @@
   }
   #controls[hidden] { display: none; }
   #controls > * { box-sizing: border-box; height: 46px; } /* 速さと音のボタンの高さをそろえる(枠線も含めて 46px) */
-  /* 速さ:×0.5 / ×1 / ×2 の3つに分かれたボタン。選んでいるものだけ、うっすら白い背景 */
-  #speed {
+  /* 速さ(×0.5 / ×1 / ×2)と音(ミュート / 音あり)は、どちらも分かれたボタン。選んでいるものだけ、うっすら白い背景 */
+  .seg {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
     padding: 3px;
     gap: 3px;
     border: 1px solid var(--off-line);
     border-radius: 12px;
   }
-  #speed button {
+  .seg button {
     min-width: 0;
     padding: 0;
+    display: grid;
+    place-items: center;
     font: 500 13px/1 system-ui, -apple-system, "Helvetica Neue", sans-serif;
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.04em;
@@ -51,28 +54,10 @@
     transition: color 0.3s, background-color 0.3s;
     -webkit-tap-highlight-color: transparent;
   }
-  #speed button[aria-checked="true"] { color: var(--on); background: var(--on-bg); }
-  #speed button:focus { outline: none; }
-  #speed button:focus-visible { outline: 1px solid var(--off); outline-offset: 1px; }
-  #sound {
-    padding: 0;
-    display: grid;
-    place-items: center;
-    color: var(--off);
-    background: transparent;
-    border: 1px solid var(--off-line);
-    border-radius: 12px;
-    cursor: pointer;
-    transition: color 0.4s, background-color 0.4s, border-color 0.4s;
-    -webkit-tap-highlight-color: transparent;
-  }
-  #sound[aria-pressed="true"] { color: var(--on); background: var(--on-bg); border-color: transparent; }
-  #sound:focus { outline: none; }
-  #sound:focus-visible { outline: 1px solid var(--off); outline-offset: 2px; } /* キーボードで選んだときだけ */
-  #sound svg { width: 26px; height: 26px; }
-  #sound .on { display: none; }
-  #sound[aria-pressed="true"] .on { display: block; }
-  #sound[aria-pressed="true"] .off { display: none; }
+  .seg button[aria-checked="true"] { color: var(--on); background: var(--on-bg); }
+  .seg button:focus { outline: none; }
+  .seg button:focus-visible { outline: 1px solid var(--off); outline-offset: 1px; }
+  .seg svg { width: 22px; height: 22px; }
   /* 入り口:画面の下で、左右どちらかを選んで始める(左 = ミュート、右 = 音あり) */
   #entry {
     position: fixed;
@@ -117,7 +102,7 @@
   #entry button:focus { outline: none; }
   #entry button:focus-visible { outline: 1px solid rgba(255, 255, 255, 0.5); outline-offset: 2px; }
   #entry svg { width: 28px; height: 28px; flex: none; }
-  @media (prefers-reduced-motion: reduce) { #sound, #entry { transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .seg button, #entry { transition: none; } }
 </style>
 
 <div id="entry">
@@ -134,30 +119,30 @@
 </div>
 
 <div id="controls" hidden>
-<div id="speed" role="radiogroup" aria-label="振り子の速さ">
+<div id="speed" class="seg" role="radiogroup" aria-label="振り子の速さ">
   <button type="button" role="radio" aria-checked="false" data-speed="0.5">×0.5</button>
   <button type="button" role="radio" aria-checked="true" data-speed="1">×1</button>
   <button type="button" role="radio" aria-checked="false" data-speed="2">×2</button>
 </div>
-<button type="button" id="sound" aria-pressed="false" aria-label="音を出す">
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    <path d="M4 9.5h3.2L12 5.5v13l-4.8-4H4z" fill="currentColor" fill-opacity="0.15"></path>
-    <g class="off"><path d="M16 9.5l5 5M21 9.5l-5 5"></path></g>
-    <g class="on"><path d="M15.5 9a4.2 4.2 0 0 1 0 6"></path><path d="M18 6.5a7.8 7.8 0 0 1 0 11"></path></g>
-  </svg>
-</button>
+<div id="sound" class="seg" role="radiogroup" aria-label="音">
+  <button type="button" role="radio" aria-checked="true" data-sound="off" aria-label="ミュート">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.2L12 5.5v13l-4.8-4H4z" fill="currentColor" fill-opacity="0.15"></path><path d="M16 9.5l5 5M21 9.5l-5 5"></path></svg>
+  </button>
+  <button type="button" role="radio" aria-checked="false" data-sound="on" aria-label="音あり">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.2L12 5.5v13l-4.8-4H4z" fill="currentColor" fill-opacity="0.15"></path><path d="M15.5 9a4.2 4.2 0 0 1 0 6"></path><path d="M18 6.5a7.8 7.8 0 0 1 0 11"></path></svg>
+  </button>
+</div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.11.1/p5.min.js"></script>
 <script src="sketch.js"></script>
 <script src="sound.js"></script>
 <script>
-  const soundBtn = document.getElementById('sound');
+  const soundBtns = document.querySelectorAll('#sound button');
   const entry = document.getElementById('entry');
 
   function showSound(on) {
-    soundBtn.setAttribute('aria-pressed', String(on));
-    soundBtn.setAttribute('aria-label', on ? '音を止める' : '音を出す');
+    for (const b of soundBtns) b.setAttribute('aria-checked', String((b.dataset.sound === 'on') === on));
   }
   function setSound(on) {
     if (on !== soundIsOn()) toggleSound();
@@ -183,7 +168,7 @@
     });
   }
 
-  soundBtn.addEventListener('click', () => setSound(!soundIsOn()));
+  for (const b of soundBtns) b.addEventListener('click', () => setSound(b.dataset.sound === 'on'));
 
   // 速さ:選んだ倍率で振り子の時間を進める(カメラの動きはそのまま)
   const speedBtns = document.querySelectorAll('#speed button');
