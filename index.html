@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>3重振り子の時空図</title>
+<meta name="description" content="3重振り子の動きを、奥行きを時間として描いた時空図。p5.js で作成。">
+<meta property="og:title" content="3重振り子の時空図">
+<meta property="og:description" content="3重振り子の動きを、奥行きを時間として描いた時空図。p5.js で作成。">
+<meta name="theme-color" content="#0c0e16">
+<style>
+  /* 全画面の時空図だけ。下に、速さの切り替え(左半分、3つに分かれたボタン)と、音のオン/オフ(右半分)を、うっすら浮かべる */
+  :root {
+    --bg: #0c0e16;
+    --on: rgba(255, 255, 255, 0.75);       /* 音がオン:うっすら白い背景 */
+    --on-bg: rgba(255, 255, 255, 0.08);
+    --off: rgba(255, 255, 255, 0.4);       /* ミュート:白い線だけで、背景なし */
+    --off-line: rgba(255, 255, 255, 0.2);
+    color-scheme: dark;
+  }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  body { background: var(--bg); }
+  canvas { position: fixed; inset: 0; display: block; touch-action: none; }
+  #controls {
+    position: fixed;
+    z-index: 10; /* キャンバスより上に出す(キャンバスは後から作られるので、指定しないと隠れる) */
+    left: 0;
+    right: 0;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    width: calc(100% - 32px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+    max-width: 600px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  #controls[hidden] { display: none; }
+  #controls > * { box-sizing: border-box; height: 46px; } /* 速さと音のボタンの高さをそろえる(枠線も含めて 46px) */
+  /* 速さ(×0.5 / ×1 / ×2)と音(ミュート / 音あり)は、どちらも分かれたボタン。選んでいるものだけ、うっすら白い背景 */
+  .seg {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    padding: 3px;
+    gap: 3px;
+    border: 1px solid var(--off-line);
+    border-radius: 12px;
+  }
+  .seg button {
+    min-width: 0;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    font: 500 13px/1 system-ui, -apple-system, "Helvetica Neue", sans-serif;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.04em;
+    color: var(--off);
+    background: transparent;
+    border: 0;
+    border-radius: 9px;
+    cursor: pointer;
+    transition: color 0.3s, background-color 0.3s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .seg button[aria-checked="true"] { color: var(--on); background: var(--on-bg); }
+  .seg button:focus { outline: none; }
+  .seg button:focus-visible { outline: 1px solid var(--off); outline-offset: 1px; }
+  .seg svg { width: 22px; height: 22px; }
+  /* 入り口:画面の下で、左右どちらかを選んで始める(左 = ミュート、右 = 音あり) */
+  #entry {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    background: rgba(8, 9, 15, 0.35);
+    transition: opacity 0.6s;
+  }
+  #entry.leaving { opacity: 0; pointer-events: none; }
+  #entry .choices {
+    width: 100%;
+    max-width: 600px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  #entry button {
+    height: 144px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    font: 500 14px/1 system-ui, -apple-system, "Helvetica Neue", sans-serif;
+    letter-spacing: 0.06em;
+    color: rgba(255, 255, 255, 0.8);
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 16px;
+    cursor: pointer;
+    white-space: nowrap;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #entry button.primary { background: rgba(255, 255, 255, 0.08); border-color: transparent; }
+  #entry button:focus { outline: none; }
+  #entry button:focus-visible { outline: 1px solid rgba(255, 255, 255, 0.5); outline-offset: 2px; }
+  #entry svg { width: 28px; height: 28px; flex: none; }
+  @media (prefers-reduced-motion: reduce) { .seg button, #entry { transition: none; } }
+</style>
+</head>
+<body>
+<div id="entry">
+  <div class="choices">
+    <button type="button" data-sound="off">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.2L12 5.5v13l-4.8-4H4z" fill="currentColor" fill-opacity="0.15"></path><path d="M16 9.5l5 5M21 9.5l-5 5"></path></svg>
+      Play muted
+    </button>
+    <button type="button" class="primary" data-sound="on">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.2L12 5.5v13l-4.8-4H4z" fill="currentColor" fill-opacity="0.15"></path><path d="M15.5 9a4.2 4.2 0 0 1 0 6"></path><path d="M18 6.5a7.8 7.8 0 0 1 0 11"></path></svg>
+      Play with sound
+    </button>
+  </div>
+</div>
+
+<div id="controls" hidden>
+<div id="speed" class="seg" role="radiogroup" aria-label="振り子の速さ">
+  <button type="button" role="radio" aria-checked="false" data-speed="0.5">×0.5</button>
+  <button type="button" role="radio" aria-checked="true" data-speed="1">×1</button>
+  <button type="button" role="radio" aria-checked="false" data-speed="2">×2</button>
+</div>
+<div id="sound" class="seg" role="radiogroup" aria-label="音">
+  <button type="button" role="radio" aria-checked="true" data-sound="off" aria-label="ミュート">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.2L12 5.5v13l-4.8-4H4z" fill="currentColor" fill-opacity="0.15"></path><path d="M16 9.5l5 5M21 9.5l-5 5"></path></svg>
+  </button>
+  <button type="button" role="radio" aria-checked="false" data-sound="on" aria-label="音あり">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.2L12 5.5v13l-4.8-4H4z" fill="currentColor" fill-opacity="0.15"></path><path d="M15.5 9a4.2 4.2 0 0 1 0 6"></path><path d="M18 6.5a7.8 7.8 0 0 1 0 11"></path></svg>
+  </button>
+</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.11.1/p5.min.js"></script>
+<script src="sketches/04-triple-pendulum/sketch.js"></script>
+<script src="sketches/04-triple-pendulum/sound.js"></script>
+<script>
+  const soundBtns = document.querySelectorAll('#sound button');
+  const entry = document.getElementById('entry');
+
+  function showSound(on) {
+    for (const b of soundBtns) b.setAttribute('aria-checked', String((b.dataset.sound === 'on') === on));
+  }
+  function setSound(on) {
+    if (on !== soundIsOn()) toggleSound();
+    showSound(on);
+    // 鳴らしたはずなのに音の準備が始まっていなければ、ミュートの表示に戻す
+    if (on) setTimeout(() => showSound(soundIsOn()), 800);
+  }
+
+  // 入り口で選ぶまでは、振り子を真上で止めておく
+  running = false;
+  window.addEventListener('load', () => noLoop());
+
+  // 入り口:選んだら、音の状態を決めて、最初から再生を始める
+  for (const btn of entry.querySelectorAll('button')) {
+    btn.addEventListener('click', () => {
+      setSound(btn.dataset.sound === 'on'); // ボタンを押した瞬間なので、確実に音を始められる
+      restart();
+      running = true;
+      loop();
+      document.getElementById('controls').hidden = false;
+      entry.classList.add('leaving');
+      setTimeout(() => entry.remove(), 700);
+    });
+  }
+
+  for (const b of soundBtns) b.addEventListener('click', () => setSound(b.dataset.sound === 'on'));
+
+  // 速さ:選んだ倍率で振り子の時間を進める(カメラの動きはそのまま)
+  const speedBtns = document.querySelectorAll('#speed button');
+  for (const btn of speedBtns) {
+    btn.addEventListener('click', () => {
+      timeScale = Number(btn.dataset.speed);
+      for (const b of speedBtns) b.setAttribute('aria-checked', String(b === btn));
+    });
+  }
+</script>
+</body>
+</html>
