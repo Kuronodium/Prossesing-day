@@ -17,9 +17,9 @@ const THIN_STEP = 1;        // それより古い部分は、この数ごとに 
 const EXPAND = 6.5;         // 一番古い過去を、どれだけ広げるか(0 で広げない。6.5 なら 7.5 倍)
 const EXPAND_CURVE = 1;     // 広がり方(1 でまっすぐな円錐、大きいほど奥で急に開く)
 // 始まり方:毎回同じ。真上から、3本の腕をほんの少しずつずらし、そろって回し始める
-// 振り子全体が1本の棒のように回って円を描き、約 1.6 秒で崩れてカオスになる
-// (真上から放すと、円が続く時間はずらし幅ではなく回す速さでほぼ決まる:2.2 で約 1.6 秒、2.5 で約 2.3 秒)
-const START_SPIN = 2.2;     // 最初に回す速さ(ラジアン / 秒)
+// 振り子全体が1本の棒のように回って円を描き、約 1.2 秒で崩れてカオスになる
+// (真上から放すと、円が続く時間はずらし幅ではなく回す速さでほぼ決まる:1.8〜2.0 で約 1.2 秒、2.2 で約 1.6 秒、2.5 で約 2.3 秒)
+const START_SPIN = 1.9;     // 最初に回す速さ(ラジアン / 秒)。1.9 で約 1.2 秒
 const START_NUDGE = 0.01;   // 腕どうしのずらし幅(ラジアン)
 
 // 中心(支点)を動かすばね。強さが大きいほど速く戻り、減衰が大きいほど弾まずに止まる
@@ -32,19 +32,17 @@ const MAX_ACCEL = 30;       // 中心の加速度の上限(重力 9.81 の約3�
 const SETTLE = 0.02;        // 揺さぶって増えたエネルギーを、1フレームで何割抜くか
 
 // カメラの視点。yaw = 左右の回り込み、pitch = 見下ろす角度、dist = 距離(腕の長さの何倍か)
-// focus = 時間の軸のどこを見るか(0 = 現在、1 = 一番古い過去)
 // どの視点も「現在が手前、過去が奥」という向きは崩さない
 const VIEWS = [
-  { name: '正面', yaw: 0.05, pitch: 0.08, dist: 10, focus: 0.15 }, // 最初はいつも正面から
-  { name: '斜め右', yaw: 0.5, pitch: 0.22, dist: 17, focus: 0.22 },
-  { name: '斜め左', yaw: -0.5, pitch: 0.18, dist: 17, focus: 0.22 },
-  { name: '斜め上', yaw: 0.25, pitch: 0.5, dist: 16, focus: 0.25 },
+  { name: '正面', yaw: 0.05, pitch: 0.08, dist: 10 }, // 最初はいつも正面から
+  { name: '斜め右', yaw: 0.5, pitch: 0.22, dist: 15 },
+  { name: '斜め左', yaw: -0.5, pitch: 0.18, dist: 15 },
+  { name: '斜め上', yaw: 0.25, pitch: 0.5, dist: 14 },
 ];
 const VIEW_SECONDS = 10;    // 1つの視点にとどまる時間
 const CAM_SPRING = 1.4;     // カメラを次の視点へ引き寄せるばねの強さ(大きいほど早く着く)
 const CAM_DAMP = 1.9;       // そのばねの減衰(小さいほど、行き過ぎてから戻る)
 const WANDER = 1;           // カメラがさまよう大きさ(0 で決めポイントに止まる)
-const ATTENTION = 0.25;     // 見る点が、振り子の先端へ引っぱられる割合
 
 // 鍵盤:支点のまわりに、時計の目盛りのように並べた放射状の短い線。関節か先端が線を横切った瞬間、その音が鳴る
 // r = 線の外側の端の、支点からの距離(腕の長さの何倍か)、n = 並べる数、start = 1本目の向き(0 = 真下、PI = 真上)
@@ -256,25 +254,21 @@ function points(th) {
 
 // ---- カメラ ----
 // カメラは「重さのある手持ちカメラ」として動かす。行きたい場所(目標)へ、ばねで引き寄せられる
-// 目標 = 決めポイントの視点 + 不規則な漂い + 振り子の先端への注目
-// さらに最後に、手持ちの細かい揺れを直接足す(ばねを通すと均されて消えてしまうため)
+// 目標 = 決めポイントの視点 + 不規則な漂い。さらに最後に、手持ちの細かい揺れを直接足す(ばねを通すと均されて消えてしまうため)
+// カメラは常に振り子の原点(支点の元の位置)を見る。回り込みも揺れも寄り引きも原点を中心にした動きなので、
+// 原点は画面の真ん中から動かない
 
-const CAM_KEYS = ['yaw', 'pitch', 'dist', 'focus', 'lookX', 'lookY', 'roll'];
+const CAM_KEYS = ['yaw', 'pitch', 'dist', 'roll'];
 
 // カメラが行きたい場所
 function camGoal(t) {
   const v = VIEWS[viewIndex];
   // n(速さ, 番号):-1 〜 1 の、なめらかで不規則な値
   const n = (speed, k) => (noise(t * speed, k * 17.3) - 0.5) * 2;
-  const tip = points(pend.th)[N];
-  const pivotY = -L * 0.5 + pivot.y * L;
   return {
     yaw: v.yaw + WANDER * 0.22 * n(0.07, 1),
     pitch: v.pitch + WANDER * 0.09 * n(0.06, 3),
     dist: v.dist * (1 + WANDER * 0.14 * n(0.05, 5)) * (drag ? 0.85 : 1), // 干渉している間は少し寄る
-    focus: v.focus + WANDER * 0.05 * n(0.04, 6),
-    lookX: tip.x * ATTENTION,
-    lookY: (tip.y - pivotY) * ATTENTION,
     roll: WANDER * 0.03 * n(0.09, 7), // ごくわずかな傾き
   };
 }
@@ -316,9 +310,9 @@ function updateCamera() {
   // 縦長の画面では、遠くから見ないとはみ出すので距離を伸ばす
   const fit = max(1, 0.85 / (width / height));
   const d = cam.dist * h.dist * L * fit;
-  const tx = cam.lookX;
-  const ty = -L * 0.5 + cam.lookY;
-  const tz = -cam.focus * L * DEPTH;
+  const tx = 0;
+  const ty = -L * 0.5; // 振り子の原点
+  const tz = 0;
   camera(
     tx + d * sin(yaw) * cos(pitch),
     ty - d * sin(pitch),
