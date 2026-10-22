@@ -41,12 +41,23 @@ const CAM_DAMP = 1.9;       // そのばねの減衰(小さいほど、行き過
 const WANDER = 1;           // カメラがさまよう大きさ(0 で決めポイントに止まる)
 const ATTENTION = 0.25;     // 見る点が、振り子の先端へ引っぱられる割合
 
+// 鍵盤:支点のまわりに置いた小さな輪。関節か先端が輪に入った瞬間、その音が鳴る
+// r = 支点からの距離(腕の長さの何倍か)、n = その輪に並べる数。内側ほど低い音
+// 1つ目の関節はいつも距離 1 を回るので、そこには置かない(置くと1周ごとに必ず鳴ってしまう)
+// 一番外側の 2 つは、最初の円(腕が伸びきって回る間)に先端が規則正しく通る。円が崩れると、めったに鳴らなくなる
+const KEY_RINGS = [{ r: 1.55, n: 3 }, { r: 2.45, n: 4 }, { r: 2.97, n: 2 }];
+const KEY_SIZE = 0.15;      // 鍵盤の輪の半径(腕の長さの何倍か)
+const KEY_REST = 0.25;      // 同じ鍵盤を続けて鳴らすまでの、最短の間隔(秒)
+const KEY_MAX_RATE = 3;     // 全体で1秒に鳴らす最大の数
+
 const BG = [8, 9, 15];
 // 軌跡の色:中心、接続部1、接続部2、先端 の順
 const TRAIL_COLORS = ['#ff5c8a', '#3d7bff', '#3d7bff', '#ffc94d'];
 const BODY = [150, 155, 166]; // 振り子本体の色(マットな灰色)
 
 let pend;       // 振り子
+let keys = [];  // 鍵盤
+let recentHits = []; // 最近鳴った時刻(1秒に鳴らす数を抑えるため)
 let pivot;      // 中心のずれ(腕の長さを 1 とした位置と速度)
 let drag;       // ドラッグ中なら、始めた時の指と中心の位置。していなければ null
 let L;          // 腕1本の長さ(画面上のピクセル)
@@ -71,6 +82,7 @@ function restart() {
   pend.baseEnergy = energy(pend); // 最初のエネルギー。揺さぶって増えても、ここへ戻っていく
   pivot = { x: 0, y: 0, vx: 0, vy: 0 };
   drag = null;
+  makeKeys();
 }
 
 function draw() {
@@ -83,7 +95,10 @@ function draw() {
     rk4(pend, a.x, a.y);
   }
   settle(pend);
-  pend.trail.push(points(pend.th));
+  const prevPts = pend.trail[pend.trail.length - 1];
+  const nowPts = points(pend.th);
+  pend.trail.push(nowPts);
+  if (prevPts) checkKeys(prevPts, nowPts);
   if (pend.trail.length > HISTORY) pend.trail.shift();
   frameIndex++;
 
@@ -93,6 +108,7 @@ function draw() {
   blendMode(ADD);
   drawTimeFrames();
   for (let i = 0; i <= N; i++) drawTrail(i);
+  drawKeys();
   blendMode(BLEND);
   gl.enable(gl.DEPTH_TEST);
 
@@ -419,6 +435,84 @@ function drawTimeFrames() {
     translate(0, -L * 0.5, z);
     const sc = spread((frameIndex - f) / HISTORY);
     ellipse(0, 0, r * 2 * sc, r * 2 * sc, 64); // 64 角形で、大きく広げても丸く見えるようにする
+    pop();
+  }
+}
+
+// ---- 鍵盤 ----
+
+function makeKeys() {
+  keys = [];
+  const total = KEY_RINGS.reduce((sum, ring) => sum + ring.n, 0);
+  let i = 0;
+  KEY_RINGS.forEach((ring) => {
+    const offset = random(TWO_PI);
+    for (let k = 0; k < ring.n; k++) {
+      // 等間隔から少しだけずらして、規則的になりすぎないようにする
+      const a = offset + (TWO_PI * k) / ring.n + random(-0.3, 0.3);
+      keys.push({
+        x: ring.r * L * sin(a),
+        y: -L * 0.5 + ring.r * L * cos(a),
+        note: round((i++ * 11) / (total - 1)), // 内側の輪から順に、低い音 → 高い音(音階の12音に散らす)
+        glow: 0,
+        col: color(255),
+        last: -1,
+      });
+    }
+  });
+}
+
+// 前のフレームから今のフレームまでに、関節や先端が鍵盤の輪に入ったかを調べる
+function checkKeys(prev, now) {
+  const t = millis() / 1000;
+  const r = KEY_SIZE * L;
+  recentHits = recentHits.filter((h) => t - h < 1);
+  for (let b = 1; b <= N; b++) {
+    const a = prev[b];
+    const c = now[b];
+    for (const key of keys) {
+      const wasOutside = dist(a.x, a.y, key.x, key.y) > r;
+      if (!wasOutside || segmentDist(a, c, key) > r) continue; // 通り道が輪にかかったときだけ
+      if (t - key.last < KEY_REST || recentHits.length >= KEY_MAX_RATE) continue;
+      key.last = t;
+      recentHits.push(t);
+      const speed = dist(a.x, a.y, c.x, c.y) / L * 60; // ヒットしたときの速さ(腕の長さ / 秒)
+      key.glow = 1;
+      key.col = color(TRAIL_COLORS[b]);
+      if (typeof window.onKeyHit === 'function') window.onKeyHit(key, b, speed);
+    }
+  }
+}
+
+// 線分 a-c と点 p の最短距離
+function segmentDist(a, c, p) {
+  const dx = c.x - a.x;
+  const dy = c.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  const u = len2 > 0 ? constrain(((p.x - a.x) * dx + (p.y - a.y) * dy) / len2, 0, 1) : 0;
+  return dist(a.x + dx * u, a.y + dy * u, p.x, p.y);
+}
+
+// 鍵盤:ふだんは薄い輪、ヒットすると光ってゆっくり消える
+function drawKeys() {
+  const r = KEY_SIZE * L;
+  for (const key of keys) {
+    push();
+    translate(key.x, key.y, 0);
+    noFill();
+    strokeWeight(1);
+    stroke(150, 160, 190, 60);
+    ellipse(0, 0, r * 2, r * 2, 32);
+    if (key.glow > 0.01) {
+      const c = key.col;
+      noStroke();
+      for (const [size, a] of [[1, 160], [1.8, 50], [3, 18]]) {
+        c.setAlpha(a * key.glow);
+        fill(c);
+        ellipse(0, 0, r * size, r * size, 32);
+      }
+      key.glow *= 0.95;
+    }
     pop();
   }
 }
