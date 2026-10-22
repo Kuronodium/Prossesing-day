@@ -1,5 +1,5 @@
-// 3重振り子の時空図:振り子は手前の平面で揺れ、先端のライトが残す光の軌跡が奥(過去)へ流れていく
-// 2つの振り子は、最初の角度が DIFF だけ違う。はじめは重なって見えるが、やがて別れる
+// 3重振り子の時空図:振り子は手前の平面で揺れ、各点が残す光の軌跡が奥(過去)へ流れていく
+//   中心(支点)はピンク、接続部は青、先端は黄色のライト
 // ドラッグで回転、ピンチ(ホイール)で拡大縮小、R キーでやり直し
 
 const N = 3;                // 振り子の段数
@@ -9,13 +9,13 @@ const SUBSTEPS = 10;        // 1フレームの計算を何回に分けるか(�
 const DT = SPEED / 60 / SUBSTEPS;
 const HISTORY = 900;        // 何フレーム分の過去を残すか(60で1秒)
 const DEPTH = 30;           // 時間の奥行きの長さ(腕の長さの何倍か)
-const DIFF = 0.001;         // 2つ目の振り子の、最初の角度のずれ(ラジアン)
 
 const BG = [8, 9, 15];
-const LIGHTS = ['#ffc94d', '#5fe0d4']; // 先端のライトの色(振り子A、振り子B)
-const METAL = [190, 194, 204];        // 腕と関節の色
+// 軌跡の色:中心、接続部1、接続部2、先端 の順
+const TRAIL_COLORS = ['#ff5c8a', '#3d7bff', '#3d7bff', '#ffc94d'];
+const BODY = [150, 155, 166]; // 振り子本体の色(マットな灰色)
 
-let pendulums = [];
+let pend;       // 振り子
 let L;          // 腕1本の長さ(画面上のピクセル)
 let zStep;      // 1フレームで、どれだけ奥へ流れるか
 let frameIndex; // 始まってからのフレーム数
@@ -30,13 +30,8 @@ function restart() {
   L = min(width, height) * 0.1;
   zStep = (L * DEPTH) / HISTORY;
   frameIndex = 0;
-  const start = [random(1.6, 2.6), random(1.6, 2.6), random(1.6, 2.6)]; // 高く持ち上げてから放す
-  const startB = [start[0], start[1], start[2] + DIFF];
-  pendulums = [makePendulum(start, LIGHTS[0]), makePendulum(startB, LIGHTS[1])];
-}
-
-function makePendulum(angles, col) {
-  return { th: angles.slice(), w: [0, 0, 0], col, trail: [] };
+  // 高く持ち上げてから放す
+  pend = { th: [random(1.6, 2.6), random(1.6, 2.6), random(1.6, 2.6)], w: [0, 0, 0], trail: [] };
 }
 
 function draw() {
@@ -47,11 +42,9 @@ function draw() {
   rotateX(-0.2);
   translate(L * 0.6, 0, L * 5);
 
-  for (const p of pendulums) {
-    for (let s = 0; s < SUBSTEPS; s++) rk4(p);
-    p.trail.push(bobPositions(p.th)[N - 1]);
-    if (p.trail.length > HISTORY) p.trail.shift();
-  }
+  for (let s = 0; s < SUBSTEPS; s++) rk4(pend);
+  pend.trail.push(points(pend.th));
+  if (pend.trail.length > HISTORY) pend.trail.shift();
   frameIndex++;
 
   // 光の部分:重なるほど明るくなる「加算合成」で、前後関係は気にせず描く
@@ -59,13 +52,12 @@ function draw() {
   gl.disable(gl.DEPTH_TEST);
   blendMode(ADD);
   drawTimeFrames();
-  for (const p of pendulums) drawTrail(p);
+  for (let i = 0; i <= N; i++) drawTrail(i);
   blendMode(BLEND);
   gl.enable(gl.DEPTH_TEST);
 
-  // 振り子本体:先端のライトに照らされる、しっかりした形
-  for (const p of pendulums) drawPendulum(p);
-  for (const p of pendulums) drawBulb(p);
+  drawPendulum();
+  drawBulb();
 }
 
 // ---- 物理:3重振り子の運動方程式(腕の長さ1、おもりの重さ1)----
@@ -108,11 +100,11 @@ function rk4(p) {
   }
 }
 
-// 角度から、3つのおもりの画面上の位置を求める(支点は少し上)
-function bobPositions(th) {
-  const pts = [];
+// 角度から、中心(支点)と3つのおもりの画面上の位置を求める
+function points(th) {
   let x = 0;
-  let y = -L * 0.5;
+  let y = -L * 0.5; // 支点は少し上
+  const pts = [{ x, y }];
   for (let i = 0; i < N; i++) {
     x += L * sin(th[i]);
     y += L * cos(th[i]);
@@ -123,11 +115,12 @@ function bobPositions(th) {
 
 // ---- 描画 ----
 
-// 光の軌跡:新しいほど手前で明るく、古いほど奥で薄く消えていく
-function drawTrail(p) {
+// i 番目の点(0 = 中心、N = 先端)の光の軌跡。新しいほど手前で明るく、古いほど奥で薄く消えていく
+function drawTrail(i) {
   noFill();
-  const c = color(p.col);
-  const n = p.trail.length;
+  const c = color(TRAIL_COLORS[i]);
+  const trail = pend.trail;
+  const n = trail.length;
   // 太く薄い線(にじみ)と、細く明るい線(芯)を重ねて、光っているように見せる
   for (const [weight, strength] of [[5, 0.18], [1.5, 1]]) {
     strokeWeight(weight);
@@ -136,61 +129,34 @@ function drawTrail(p) {
       const fade = pow(k / n, 1.6); // 古いほど 0 に近づく
       c.setAlpha(255 * fade * strength);
       stroke(c);
-      const pt = p.trail[k];
+      const pt = trail[k][i];
       vertex(pt.x, pt.y, -(n - 1 - k) * zStep);
     }
     endShape();
   }
 }
 
-// 振り子本体:金属の腕(円柱)と関節(球)
-function drawPendulum(p) {
-  ambientLight(35);
-  directionalLight(70, 70, 80, 0.3, 0.6, -1);
-  // 両方の振り子の先端ライトが、まわりを照らす
-  for (const q of pendulums) {
-    const tip = bobPositions(q.th)[N - 1];
-    pointLight(color(q.col), tip.x, tip.y, L * 0.4);
-  }
+// 振り子本体:マットな灰色の、平らな線と円
+function drawPendulum() {
+  const pts = points(pend.th);
+  stroke(...BODY);
+  strokeWeight(L * 0.07);
+  for (let i = 0; i < N; i++) line(pts[i].x, pts[i].y, 0, pts[i + 1].x, pts[i + 1].y, 0);
   noStroke();
-  fill(...METAL); // 軌跡で使った noFill() を戻す
-  specularMaterial(...METAL);
-  shininess(40);
-
-  const pts = bobPositions(p.th);
-  let prev = { x: 0, y: -L * 0.5 };
-  push();
-  translate(prev.x, prev.y, 0);
-  box(L * 0.25, L * 0.08, L * 0.12); // 支点の金具
-  pop();
-  for (let i = 0; i < N; i++) {
-    const pt = pts[i];
-    push();
-    translate((prev.x + pt.x) / 2, (prev.y + pt.y) / 2, 0);
-    rotateZ(-p.th[i]);
-    cylinder(L * 0.045, L, 12, 1);
-    pop();
-    if (i < N - 1) {
-      push();
-      translate(pt.x, pt.y, 0);
-      sphere(L * 0.09, 16, 12);
-      pop();
-    }
-    prev = pt;
-  }
+  fill(...BODY);
+  for (let i = 0; i < N; i++) circle(pts[i].x, pts[i].y, L * 0.18);
 }
 
 // 先端の電球:自分で光る球と、まわりのぼんやりした光
-function drawBulb(p) {
-  const tip = bobPositions(p.th)[N - 1];
-  noLights();
+function drawBulb() {
+  const tip = points(pend.th)[N];
   noStroke();
   push();
   translate(tip.x, tip.y, 0);
   fill(255);
   sphere(L * 0.06, 12, 8);
   blendMode(ADD);
-  const c = color(p.col);
+  const c = color(TRAIL_COLORS[N]);
   for (const [r, a] of [[0.12, 120], [0.22, 45], [0.38, 18]]) {
     c.setAlpha(a);
     fill(c);
@@ -214,13 +180,6 @@ function drawTimeFrames() {
     rect(0, 0, r * 2, r * 2);
     pop();
   }
-}
-
-// 2つの振り子の先端どうしの距離(ずれの大きさ)
-function tipGap() {
-  const a = bobPositions(pendulums[0].th)[N - 1];
-  const b = bobPositions(pendulums[1].th)[N - 1];
-  return dist(a.x, a.y, b.x, b.y);
 }
 
 function windowResized() {
